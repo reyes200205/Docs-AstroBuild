@@ -1,0 +1,46 @@
+---
+// Sustituye a SocialIcons de Starlight (header y menú móvil) para añadir "Cerrar sesión".
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+
+const user = Astro.locals.user;
+---
+
+<Default />
+{
+	user && (
+		<form method="post" action="/api/auth/logout" class="logout">
+			<span class="user" title={user.email}>{user.name}</span>
+			<button type="submit">Cerrar sesión</button>
+		</form>
+	)
+}
+
+<style>
+	.logout {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+	.user {
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	button {
+		background: none;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.375rem;
+		color: var(--sl-color-white);
+		cursor: pointer;
+		font: inherit;
+		font-size: var(--sl-text-sm);
+		padding: 0.25rem 0.75rem;
+	}
+	button:hover {
+		border-color: var(--sl-color-text-accent);
+		color: var(--sl-color-text-accent);
+	}
+</style>
