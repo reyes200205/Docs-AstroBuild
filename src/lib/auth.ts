@@ -50,7 +50,7 @@ function toBase64Url(bytes: Uint8Array): string {
 	return Buffer.from(bytes).toString('base64url');
 }
 
-function fromBase64Url(value: string): Uint8Array {
+function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
 	return new Uint8Array(Buffer.from(value, 'base64url'));
 }
 
@@ -138,12 +138,7 @@ export type LoginResult =
 	| { ok: true; token: string; user: DocsUser }
 	| { ok: false; error: 'invalid' | 'inactive' | 'throttled' | 'unavailable' };
 
-export async function apiLogin(
-	email: string,
-	password: string,
-	remember: boolean,
-	userAgent: string | null,
-): Promise<LoginResult> {
+export async function apiLogin(email: string, password: string, remember: boolean, userAgent: string | null): Promise<LoginResult> {
 	let res: Response;
 	try {
 		res = await fetch(apiUrl('login'), {

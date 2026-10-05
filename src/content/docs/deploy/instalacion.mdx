@@ -1,0 +1,210 @@
+---
+title: Montar el servidor desde cero
+description: Guía completa para levantar producción en un servidor nuevo, desde la instancia de AWS hasta el primer inicio de sesión.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Sirve para dos casos: **reconstruir producción** si el servidor se pierde y **mover el stack** a
+otro servidor. Cada paso enlaza a la página de referencia con el porqué de cada decisión.
+
+:::note[Antes de empezar]
+Necesitas: acceso a la consola de AWS y de Cloudflare, acceso de administrador al repo de GitHub,
+los secretos del `.env` (contraseñas, `APP_KEY`, llaves de AWS, Firebase e IA) y, si vas a
+recuperar datos, el último respaldo de `backups/` en S3.
+:::
+
+## 1. AWS
+
+<Steps>
+
+1. **Instancia EC2**: t3.small, Ubuntu 24.04 LTS, volumen EBS de **30 GiB** (la imagen de `api`
+   pesa ~1.1 GB y se guardan varias versiones para el rollback).
+
+2. **Elastic IP** asociada a la instancia. Sin ella, la IP pública cambia al detener e iniciar la
+   instancia y Cloudflare deja de llegar.
+
+3. **Security Group** (entrada):
+
+   | Puerto | Origen |
+   |---|---|
+   | 443 | Lista de prefijos administrada con los rangos IPv4 de Cloudflare ([cloudflare.com/ips-v4](https://www.cloudflare.com/ips-v4)) |
+   | 22 | Tu IP o la de administración |
+
+   Sin regla para el 80. Ver [Red y TLS](/deploy/infraestructura/red-y-tls/).
+
+</Steps>
+
+## 2. Sistema operativo
+
+Por SSH como `ubuntu`. El detalle de cada archivo está en [Servidor](/deploy/infraestructura/servidor/).
+
+<Steps>
+
+1. Actualizar y reiniciar si hay kernel nuevo:
+
+   ```bash
+   sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
+   ```
+
+2. Endurecer SSH con `/etc/ssh/sshd_config.d/00-hardening.conf`. Valida con `sudo sshd -T` y
+   **prueba una segunda sesión antes de cerrar la actual**.
+
+3. Firewall, fail2ban y parches automáticos:
+
+   ```bash
+   sudo ufw default deny incoming && sudo ufw default allow outgoing
+   ```
+
+   ```bash
+   sudo ufw allow 22/tcp && sudo ufw allow 443/tcp && sudo ufw enable
+   ```
+
+   ```bash
+   sudo apt-get install -y fail2ban
+   ```
+
+4. Swap de 2 GB con `swappiness=10`.
+
+5. Usuario `deploy` (para el futuro despliegue automático), sin contraseña ni `sudo`:
+
+   ```bash
+   sudo adduser --disabled-password --gecos "" deploy && sudo deluser deploy users
+   ```
+
+</Steps>
+
+## 3. Docker
+
+Desde el repositorio oficial de Docker, nunca `snap` ni `docker.io`. Pasos y `daemon.json` en
+[Contenedores](/deploy/infraestructura/contenedores/#instalación-de-docker).
+
+:::caution
+No agregues a `ubuntu` al grupo `docker`: equivale a darle root sin contraseña. Todos los comandos
+llevan `sudo`.
+:::
+
+## 4. El proyecto
+
+<Steps>
+
+1. **Llave de solo lectura** para clonar el repo privado:
+
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/md_repo -N "" -C "md-server-readonly"
+   ```
+
+   Agrega `~/.ssh/md_repo.pub` en GitHub → repo → *Settings → Deploy keys*, **sin** *Allow write
+   access*. Después:
+
+   ```bash
+   printf 'Host github.com\n  IdentityFile ~/.ssh/md_repo\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+   ```
+
+   ```bash
+   ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts && ssh -T git@github.com
+   ```
+
+2. **Clonar** en `/opt/md`:
+
+   ```bash
+   sudo mkdir /opt/md && sudo chown ubuntu:ubuntu /opt/md
+   ```
+
+   ```bash
+   git clone git@github.com:reyes200205/master-drilling-release.git /opt/md
+   ```
+
+3. **`.env`** a partir de la plantilla. Cada variable está explicada en
+   [Variables de entorno](/deploy/configuracion/variables/):
+
+   ```bash
+   cd /opt/md/deploy && cp .env.example .env && chmod 600 .env && nano .env
+   ```
+
+   El `APP_KEY` se genera después del paso 5 con
+   `sudo docker compose run --rm api php artisan key:generate --show`.
+
+4. **Certificado Origin CA** en `deploy/certs/` (`origin.pem` y `origin.key`, la llave con
+   permisos 600). Genera la llave y el CSR **en el servidor** para que la llave nunca salga de él,
+   y emite el certificado en Cloudflare → *SSL/TLS → Origin Server* para `mdmexico.online` y
+   `*.mdmexico.online`.
+
+5. **Acceso a GHCR** (las imágenes son privadas). Crea en GitHub un token clásico con solo
+   `read:packages` y haz login sin que quede en el historial:
+
+   ```bash
+   read -rs GHCR_TOKEN && echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u reyes200205 --password-stdin; unset GHCR_TOKEN
+   ```
+
+6. **Firebase** (opcional): copia el JSON de la cuenta de servicio a
+   `deploy/secrets/firebase-credentials.json`. Sin él, el push queda apagado sin errores.
+
+</Steps>
+
+## 5. Levantar el stack
+
+<Steps>
+
+1. Validar el compose y arrancar la base:
+
+   ```bash
+   sudo docker compose config --quiet && sudo docker compose up -d mysql
+   ```
+
+2. Descargar las imágenes de la app:
+
+   ```bash
+   sudo docker compose pull api web
+   ```
+
+3. **Base de datos.** Elige una opción:
+   - **Servidor nuevo, sin datos:** migraciones y catálogos base.
+
+     ```bash
+     sudo docker compose run --rm api php artisan migrate --force --seeder='Database\Seeders\ProductionSeeder' --seed
+     ```
+
+   - **Recuperar datos:** restaura el último respaldo ([Respaldos](/deploy/operacion/respaldos/#restaurar))
+     y después corre `migrate --force` por si el código es más nuevo que el respaldo.
+
+4. Levantar todo:
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+5. **Primer administrador** (solo en un servidor sin datos):
+
+   ```bash
+   sudo docker compose exec api php artisan md:create-super-admin
+   ```
+
+   :::danger
+   Nunca ejecutes `php artisan db:seed` a secas en producción: incluye `UsersSeeder`, que crea un
+   super admin con la contraseña `password`.
+   :::
+
+</Steps>
+
+## 6. Cloudflare
+
+<Steps>
+
+1. **DNS**: registros `A` para `mdmexico.online` y `api` apuntando a la Elastic IP, **con proxy**
+   (nube naranja).
+2. **SSL/TLS**: modo **Full (strict)**.
+3. **Edge Certificates**: *Always Use HTTPS* encendido y TLS mínimo 1.2.
+
+</Steps>
+
+## 7. Verificar
+
+```bash
+sudo docker compose ps
+```
+
+Los 6 servicios en `Up`; `mysql`, `web` y `nginx` en `healthy`. Después sigue la verificación de
+[Actualizar producción](/deploy/operacion/actualizar/#verificar), revisa que el scheduler vea las
+tareas ([Tareas programadas](/deploy/operacion/tareas-programadas/)) y lanza un respaldo manual
+desde Management.

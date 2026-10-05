@@ -1,0 +1,66 @@
+---
+title: Rollback
+description: Volver a una versión anterior de la aplicación fijando el SHA de sus imágenes.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Cada build publica las imágenes con dos etiquetas: `latest` y el **SHA completo del commit** (40
+caracteres). El compose usa `${IMAGE_TAG:-latest}`, así que volver atrás es fijar `IMAGE_TAG` al
+SHA de una versión buena.
+
+:::caution[El rollback no toca la base de datos]
+Revierte el código, no el esquema. Si la versión mala aplicó una migración, el código anterior
+tiene que tolerarla ([por eso las migraciones son compatibles hacia atrás](/deploy/operacion/migraciones/#reglas)).
+Si no la tolera, restaura un [respaldo](/deploy/operacion/respaldos/#restaurar) o corrige con una
+migración nueva.
+:::
+
+## Volver a una versión anterior
+
+<Steps>
+
+1. **Encuentra el SHA bueno.** En GitHub → *Actions* → una ejecución en verde de *Build and
+   publish images* anterior a la mala; ahí aparece el commit. Desde tu PC también sirve
+   `git log --oneline` y `git rev-parse <sha-corto>` para el SHA completo.
+
+2. **Fíjalo** al final de `/opt/md/deploy/.env`:
+
+   ```bash
+   nano /opt/md/deploy/.env
+   ```
+
+   ```text
+   IMAGE_TAG=<sha-completo-de-40-caracteres>
+   ```
+
+3. **Descarga y aplica**:
+
+   ```bash
+   cd /opt/md/deploy && sudo docker compose pull api web
+   ```
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+4. **Verifica** como en [Actualizar producción](/deploy/operacion/actualizar/#verificar).
+
+</Steps>
+
+## Salir del rollback
+
+Con la corrección ya subida a `main` y su build en verde:
+
+<Steps>
+
+1. **Quita** la línea `IMAGE_TAG` del `.env`.
+2. Haz una [actualización normal](/deploy/operacion/actualizar/) (pasos 3–7).
+
+</Steps>
+
+:::danger
+- **Mientras `IMAGE_TAG` esté puesto, las actualizaciones no avanzan**: el servidor se queda fijo
+  en esa versión.
+- **No lo quites antes de tener un build corregido**: `latest` seguiría apuntando a la versión mala.
+:::

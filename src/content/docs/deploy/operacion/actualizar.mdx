@@ -1,0 +1,136 @@
+---
+title: Actualizar producción
+description: El procedimiento para llevar un cambio de main al servidor, paso a paso, y qué hacer según lo que cambió.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Procedimiento **manual** mientras no exista el job de despliegue en GitHub Actions. Tarda unos
+10 minutos, la mayoría esperando el build.
+
+:::danger[Antes de empezar]
+- Todos los comandos de Docker llevan **su propio** `sudo`. En `sudo docker compose pull && docker compose up -d`
+  el segundo comando corre sin permisos, falla y la app se queda con el código viejo.
+- Nunca `docker compose down -v`, `docker volume prune` ni `php artisan db:seed` a secas.
+- No edites archivos del repo en el servidor: se cambian en tu PC, se suben y el servidor los descarga.
+:::
+
+## Paso a paso
+
+<Steps>
+
+1. **Subir el cambio a `main`** (tu PC).
+
+   ```bash
+   git status --short
+   ```
+
+   Agrega solo lo que quieres desplegar, no `git add .` si tienes otros cambios en curso:
+
+   ```bash
+   git add <rutas> && git commit -m "tipo: descripción" && git push origin main
+   ```
+
+2. **Esperar el build** (GitHub → *Actions* → *Build and publish images*). Los dos jobs, `Build api`
+   y `Build web`, deben terminar en verde. Si alguno falla, **detente**: producción sigue con la
+   versión anterior. Corrige y vuelve al paso 1.
+
+3. **Traer la configuración** (servidor):
+
+   ```bash
+   cd /opt/md && git pull --ff-only && cd deploy
+   ```
+
+   Trae el compose y las configuraciones de nginx y MySQL. `Already up to date` es normal si solo
+   cambió código.
+
+4. **Descargar las imágenes nuevas**:
+
+   ```bash
+   sudo docker compose pull api web
+   ```
+
+   Solo `api` y `web`. Un `pull` sin nombres también podría traer un parche de `mysql:8.4` y el
+   siguiente `up -d` reiniciaría la base de datos sin que lo hayas planeado.
+
+5. **Migraciones**, con la imagen nueva, **antes** de cambiar los contenedores:
+
+   ```bash
+   sudo docker compose run --rm api php artisan migrate --force
+   ```
+
+   Si falla, producción sigue sirviendo la versión anterior. `Nothing to migrate` es normal si no
+   hay migraciones nuevas. Antes de una migración destructiva lee
+   [Migraciones](/deploy/operacion/migraciones/).
+
+6. **Aplicar**:
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+   Recrea `api`, `queue`, `scheduler` y `web`. MySQL y nginx no se tocan. Hay unos segundos de 502
+   mientras se recrea `api`.
+
+7. **Verificar** (abajo).
+
+8. **Limpiar** imágenes viejas (opcional, cada varias actualizaciones):
+
+   ```bash
+   sudo docker image prune -f && df -h /
+   ```
+
+</Steps>
+
+## Verificar
+
+```bash
+sudo docker compose ps
+```
+
+Todos `Up`; `mysql`, `web` y `nginx` en `healthy`.
+
+```bash
+sudo docker compose logs --tail=30 api queue scheduler
+```
+
+Sin `ERROR`, `Exception` ni reinicios en bucle.
+
+```bash
+curl -sk --resolve api.mdmexico.online:443:127.0.0.1 https://api.mdmexico.online/up -o /dev/null -w "%{http_code}\n"
+```
+
+Debe responder `200`. Después abre `https://mdmexico.online`, inicia sesión y prueba **lo que
+cambiaste**.
+
+¿El contenedor corre de verdad la versión nueva? La fecha de la imagen (en UTC) debe ser posterior
+a tu push:
+
+```bash
+sudo docker image inspect ghcr.io/reyes200205/md-api:latest --format '{{.Created}}'
+```
+
+## Según lo que cambió
+
+| Qué cambió | Qué hacer |
+|---|---|
+| Código de la API | Pasos 1–7 |
+| Código del frontend | Pasos 1–4, 6 y 7 |
+| Migraciones nuevas | Paso 5 obligatorio; respaldo antes si es destructiva |
+| `deploy/docker-compose.yml` | Pasos 1, 3 y `sudo docker compose up -d` |
+| Configuración de nginx | Pasos 1 y 3, luego [probar y reiniciar nginx](/deploy/infraestructura/red-y-tls/#cambiar-la-configuración-de-nginx) |
+| `deploy/mysql/prod.cnf` | Pasos 1 y 3, luego `sudo docker compose restart mysql` (corte breve) |
+| Variable nueva en el `.env` | `nano .env` en el servidor y `sudo docker compose up -d --force-recreate api queue scheduler` |
+| Dependencias (Composer, pnpm) | Nada extra: van dentro de la imagen |
+| URL de la API del frontend | Se cambia en el workflow (build arg) y se reconstruye `web` |
+| Catálogo nuevo (seeder idempotente) | `sudo docker compose exec -T api php artisan db:seed --class='Database\Seeders\Production\<Seeder>' --force` |
+| Permisos nuevos | `sudo docker compose exec -T api php artisan db:seed --class='Database\Seeders\Production\RolesAndPermissionsSeeder' --force` (solo agrega) |
+| Valor por defecto de un setting | No surte efecto: el seeder respeta el valor existente. Cámbialo desde la pantalla de Configuración |
+
+## Si algo sale mal
+
+- **El build falla**: producción no se tocó. Corrige y repite.
+- **La migración falla**: la app sigue con la versión anterior porque no se ejecutó `up -d`.
+  Corrige la migración y repite desde el paso 1.
+- **La versión nueva rompe algo**: [Rollback](/deploy/operacion/rollback/).
+- **Cualquier otra cosa**: [Diagnóstico](/deploy/operacion/diagnostico/).

@@ -1,40 +1,78 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
-hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
-  actions:
-    - text: Example Guide
-      link: /guides/example/
-      icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
-      variant: minimal
+title: Introducción
+description: Qué es la plataforma Master Drilling, cómo está construida y cómo está organizada esta documentación.
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-## Next steps
+Documentación interna de la **plataforma Master Drilling**: la aplicación web con la que la
+empresa administra Recursos Humanos, la mesa de ayuda y la propia plataforma. Esta documentación
+es privada; contiene detalles de infraestructura y seguridad que no deben salir de aquí.
 
-<CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+## La plataforma
+
+<CardGrid>
+	<Card title="Recursos Humanos" icon="seti:folder">
+		Empleados y expediente, vacaciones y permisos con flujos de aprobación, calendario, gastos,
+		comunicados y reportes.
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="Help Desk" icon="comment">
+		Tickets, categorías y prioridades.
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="Management" icon="setting">
+		Usuarios, roles y permisos, módulos y funcionalidades, flujos de aprobación, auditorías,
+		configuración general y tareas programadas.
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Transversal" icon="star">
+		Bandeja de aprobaciones, notificaciones (campana y push), asistente de IA y pantallas
+		kiosko (TV).
 	</Card>
 </CardGrid>
+
+## Cómo está construida
+
+Un **monorepo** (`master-drilling-release`) con dos aplicaciones independientes:
+
+| | `laravel-api-kit` | `nuxt-app-kit` |
+|---|---|---|
+| Rol | API REST | Interfaz web (SPA) |
+| Stack | PHP 8.4 · Laravel 13 · Sanctum (tokens) | Nuxt 4 (`ssr: false`) · Vue 3 · Nuxt UI |
+| Datos | MySQL 8.4 · archivos en AWS S3 | — |
+| Dominio | `api.mdmexico.online` | `mdmexico.online` |
+
+En producción todo corre en **un servidor AWS EC2 con Docker**, detrás de **Cloudflare**. Las
+imágenes se construyen en **GitHub Actions** y el servidor solo las descarga. Los detalles están
+en [Deploy → Visión general](/deploy/).
+
+## Cómo está organizada esta documentación
+
+<CardGrid>
+	<LinkCard
+		title="Deploy"
+		description="Arquitectura de producción, cómo montar el servidor, la configuración y la operación diaria."
+		href="/deploy/"
+	/>
+	<LinkCard
+		title="Actualizar producción"
+		description="El procedimiento para subir un cambio. Es la página que más se usa."
+		href="/deploy/operacion/actualizar/"
+	/>
+</CardGrid>
+
+Cada sección separa tres tipos de página:
+
+- **Referencia**: cómo está hecho algo y por qué (arquitectura, infraestructura, variables).
+- **Guías**: pasos para lograr algo concreto (actualizar, hacer rollback, restaurar un respaldo).
+- **Estado**: lo que falta o no se ha probado. Se actualiza en cuanto cambia algo.
+
+## Convenciones
+
+- Los comandos indican **dónde se ejecutan**: tu PC, el servidor (por SSH) o GitHub.
+- En el servidor, todos los comandos de Docker van con `sudo` y se ejecutan en `/opt/md/deploy`.
+- Los valores secretos nunca aparecen en esta documentación; se indica dónde viven.
+
+:::caution[Regla de oro]
+Si un procedimiento de esta documentación ya no coincide con lo que hay en el servidor o en el
+repo, **corrige la documentación en el mismo cambio**. Una guía desactualizada es peor que no
+tener guía.
+:::

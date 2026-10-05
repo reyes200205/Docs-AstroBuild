@@ -33,8 +33,6 @@ export const POST: APIRoute = async ({ request, cookies, url, redirect }) => {
 	if (!result.ok) return back(result.error);
 
 	if (result.user.password_change_required) {
-		// La API bloquea a estos usuarios en todo salvo /me y /profile/password;
-		// no se crea sesión de docs y el token se revoca.
 		await apiLogout(result.token, userAgent);
 		return back('password_change');
 	}

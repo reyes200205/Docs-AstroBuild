@@ -1,0 +1,124 @@
+---
+title: Cerrar sesión (Logout)
+description: Documentación del endpoint para revocar el token de acceso actual e invalidar la sesión del usuario.
+---
+
+import { Badge, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Cierra la sesión del usuario autenticado eliminando (**revocando**) el token de acceso personal (**Laravel Sanctum**) que se utilizó para autorizar la petición. Una vez revocado, el token queda permanentemente invalidado en la base de datos y no podrá ser utilizado de nuevo.
+
+---
+
+## Endpoint
+
+<div style="display: flex; align-items: center; gap: 12px; margin: 16px 0; font-family: monospace; font-size: 1.1rem;">
+  <Badge text="POST" variant="success" size="large" />
+  <span>/api/v1/logout</span>
+</div>
+
+| Entorno | URL Base | Endpoint Completo |
+|---|---|---|
+| **Producción** | `https://api.mdmexico.online` | `https://api.mdmexico.online/api/v1/logout` |
+| **Local / Dev** | `http://localhost:8000` | `http://localhost:8000/api/v1/logout` |
+
+:::tip[Endpoint Protegido]
+Requiere el token activo en el encabezado `Authorization`. Este endpoint solo revoca el token utilizado en la llamada actual, permitiendo que las sesiones en otros dispositivos del usuario permanezcan activas.
+:::
+
+---
+
+## Parámetros de la solicitud (Request)
+
+### Encabezados (Headers)
+
+| Encabezado | Tipo | Valor | Obligatorio | Descripción |
+|---|---|---|---|---|
+| `Authorization` | String | `Bearer <token>` | **Sí** | Token personal de acceso que se desea revocar. |
+| `Accept` | String | `application/json` | **Sí** | Formato de respuesta esperado. |
+| `Content-Type` | String | `application/json` | No | Tipo de contenido enviado. |
+
+*(Este endpoint no requiere parámetros en la URL ni cuerpo de petición).*
+
+---
+
+## Ejemplos de uso
+
+<Tabs>
+  <TabItem label="cURL">
+```bash
+curl --request POST \
+  --url https://api.mdmexico.online/api/v1/logout \
+  --header 'Authorization: Bearer 1|p8Qe3Rk...' \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json'
+```
+  </TabItem>
+  <TabItem label="JavaScript (Fetch)">
+```javascript
+const response = await fetch('https://api.mdmexico.online/api/v1/logout', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer 1|p8Qe3Rk...',
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  },
+});
+
+const data = await response.json();
+console.log(data);
+```
+  </TabItem>
+  <TabItem label="PHP (Guzzle)">
+```php
+$client = new \GuzzleHttp\Client();
+
+$response = $client->post('https://api.mdmexico.online/api/v1/logout', [
+    'headers' => [
+        'Authorization' => 'Bearer 1|p8Qe3Rk...',
+        'Accept' => 'application/json',
+        'Content-Type' => 'application/json',
+    ],
+]);
+
+$data = json_decode($response->getBody(), true);
+```
+  </TabItem>
+</Tabs>
+
+---
+
+## Respuestas (Responses)
+
+### <Badge text="200 OK" variant="success" /> Sesión cerrada exitosamente
+
+El token fue eliminado correctamente de la base de datos. La aplicación cliente debe borrar el token de su almacenamiento local (cookies, localStorage, memoria).
+
+```json
+{
+  "success": true,
+  "message": "Logged out successfully",
+  "data": null
+}
+```
+
+#### Descripción de campos en respuesta 200
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `success` | `boolean` | `true` indicando que el cierre de sesión concluyó con éxito. |
+| `message` | `string` | Mensaje descriptivo (`"Logged out successfully"`). |
+| `data` | `null` | No devuelve contenido adicional. |
+
+---
+
+### Códigos de Error
+
+#### <Badge text="401 Unauthorized" variant="danger" /> No autenticado o token inválido
+
+Ocurre si no se envía la cabecera `Authorization`, o si el token ya había sido revocado previamente.
+
+```json
+{
+  "message": "Unauthenticated."
+}
+```

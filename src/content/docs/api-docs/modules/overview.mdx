@@ -1,0 +1,52 @@
+---
+title: Visión general de Módulos
+description: Arquitectura y funcionamiento del sistema de módulos y funcionalidades en master-drilling-release.
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+El sistema de **Módulos y Funcionalidades** de la plataforma **master-drilling-release** permite habilitar o deshabilitar secciones enteras del sistema (y herramientas específicas dentro de ellas) en tiempo real y sin necesidad de realizar nuevos despliegues de código en el servidor.
+
+---
+
+## Arquitectura del sistema
+
+La plataforma implementa un esquema jerárquico de control de acceso y activación de funciones (*Feature Flags*) en dos niveles:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ Módulo (Module)                                        │
+│ Ejemplo: Recursos Humanos (slug: "rh")                 │
+│ Estado global: "active" | "inactive"                   │
+│                                                        │
+│   ├── Funcionalidad (ModuleFeature): Vacaciones        │
+│   │   Key: "rh.vacations"                              │
+│   │   Permisos vinculados: ['vacations.', 'requests.'] │
+│   │   Estado: "active" | "inactive"                    │
+│   │                                                    │
+│   └── Funcionalidad (ModuleFeature): Incidencias       │
+│       Key: "rh.incidents"                              │
+│       Permisos vinculados: ['incidents.']              │
+│       Estado: "active" | "inactive"                    │
+└────────────────────────────────────────────────────────┘
+```
+
+<CardGrid>
+  <Card title="1. Módulo (Module)" icon="puzzle">
+    Representa una división o departamento principal de la empresa (p. ej. *Recursos Humanos*, *Operaciones*, *Pantallas Kiosko*, *Administración*). Si un módulo está `inactive`, todas sus funcionalidades subordinadas quedan automáticamente suspendidas en cascada.
+  </Card>
+  <Card title="2. Funcionalidad (ModuleFeature)" icon="setting">
+    Una herramienta específica dentro del módulo. Cada funcionalidad define un arreglo de prefijos de permisos (`permission_prefixes`). Permite apagar una herramienta puntual sin afectar al resto del módulo.
+  </Card>
+</CardGrid>
+
+---
+
+## Impacto en Seguridad y la Interfaz de Usuario (UI)
+
+1. **Filtrado dinámico en `/api/v1/me`:**
+   Cuando el frontend solicita el perfil del usuario autenticado, la API omite automáticamente todos los permisos correspondientes a módulos o funcionalidades que estén en estado `inactive`.
+2. **Ocultamiento automático en el Frontend:**
+   La interfaz de usuario (Nuxt/Nitro) evalúa los permisos del usuario para renderizar menús, rutas y botones. Si una funcionalidad se apaga desde la API, la UI oculta las vistas correspondientes sin necesidad de recargar código.
+3. **Protección en el Backend:**
+   Cualquier petición a endpoints de un módulo o funcionalidad apagada es rechazada inmediatamente por los middlewares de Laravel, impidiendo accesos no autorizados por URL directa.

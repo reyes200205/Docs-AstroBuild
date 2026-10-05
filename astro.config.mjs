@@ -37,7 +37,10 @@ export default defineConfig({
 
 	integrations: [
 		starlight({
-			title: 'My Docs',
+			title: 'Master Drilling Docs',
+			// Interfaz de Starlight en español (búsqueda, "En esta página", navegación...).
+			defaultLocale: 'root',
+			locales: { root: { label: 'Español', lang: 'es' } },
 			// Starlight prerenderiza por defecto; aquí cada página pasa por el middleware.
 			prerender: false,
 			// Pagefind genera un índice estático público con todo el contenido: incompatible con docs privadas.
@@ -47,16 +50,64 @@ export default defineConfig({
 				SocialIcons: './src/components/LogoutButton.astro',
 			},
 			sidebar: [
+				{ label: 'Introducción', slug: 'index' },
 				{
-					label: 'Guides',
+					label: 'Documentación API',
 					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Example Guide', slug: 'guides/example' },
+						{
+							label: 'Autenticación',
+							collapsed: true,
+							items: [
+								{ label: 'Inicio de sesión', slug: 'api-docs/auth/login' },
+								{ label: 'Cerrar sesión', slug: 'api-docs/auth/logout' },
+								{ label: 'Usuario actual', slug: 'api-docs/auth/me' },
+							],
+						},
+						{
+							label: 'Módulos y Funcionalidades',
+							collapsed: true,
+							items: [
+								{ label: 'Visión general', slug: 'api-docs/modules/overview' },
+								{ label: 'Listar módulos', slug: 'api-docs/modules/list' },
+								{ label: 'Estado del módulo', slug: 'api-docs/modules/module-status' },
+								{ label: 'Estado de funcionalidad', slug: 'api-docs/modules/feature-status' },
+							],
+						},
 					],
 				},
 				{
-					label: 'Reference',
-					items: [{ autogenerate: { directory: 'reference' } }],
+					label: 'Operación',
+					collapsed: true,
+					items: [
+						{ label: 'Visión general', slug: 'deploy' },
+						{ label: 'Montar el servidor desde cero', slug: 'deploy/instalacion' },
+						{
+							label: 'Infraestructura',
+							items: [
+								{ label: 'Servidor', slug: 'deploy/infraestructura/servidor' },
+								{ label: 'Contenedores', slug: 'deploy/infraestructura/contenedores' },
+								{ label: 'Red y TLS', slug: 'deploy/infraestructura/red-y-tls' },
+								{ label: 'Base de datos', slug: 'deploy/infraestructura/base-de-datos' },
+							],
+						},
+						{
+							label: 'Configuración',
+							items: [{ label: 'Variables de entorno', slug: 'deploy/configuracion/variables' }],
+						},
+						{
+							label: 'Operación',
+							items: [
+								{ label: 'Comandos útiles', slug: 'deploy/operacion/useful-commands' },
+								{ label: 'Actualizar producción', slug: 'deploy/operacion/actualizar' },
+								{ label: 'Migraciones', slug: 'deploy/operacion/migraciones' },
+								{ label: 'Rollback', slug: 'deploy/operacion/rollback' },
+								{ label: 'Tareas programadas', slug: 'deploy/operacion/tareas-programadas' },
+								{ label: 'Respaldos', slug: 'deploy/operacion/respaldos' },
+								{ label: 'Diagnóstico', slug: 'deploy/operacion/diagnostico' },
+							],
+						},
+						{ label: 'Estado y pendientes', slug: 'deploy/pendientes' },
+					],
 				},
 			],
 		}),

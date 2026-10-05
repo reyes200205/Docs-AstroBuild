@@ -1,0 +1,124 @@
+---
+title: Respaldos
+description: Respaldo automático de la base de datos a S3, respaldo manual, permisos de AWS y cómo restaurar.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Respaldo automático
+
+La [tarea programada](/deploy/operacion/tareas-programadas/) *Respaldo de la base de datos* corre
+`md:backup-database` todos los días a las **02:00**:
+
+1. Genera un `.sql.gz` con **toda** la base: estructura y datos, leídos en una sola transacción
+   para que el respaldo sea una foto coherente aunque la app siga escribiendo.
+2. Lo sube a `BACKUP_DISK` (el bucket de S3), carpeta `backups/`, con visibilidad privada:
+   `backups/md-AAAA-MM-DD_HHMMSS.sql.gz`.
+3. Borra los de más de `BACKUP_KEEP_DAYS` días (14), conservando siempre los 3 más recientes.
+
+Lo genera la propia app con su conexión (no usa `mysqldump`). El resultado es SQL normal, que se
+restaura con el cliente de MySQL de siempre.
+
+| Qué cubre | Qué no cubre |
+|---|---|
+| Toda la base de datos | Los archivos de usuario: ya viven en S3, fuera del servidor |
+| | El volumen `md_api_storage` (disco `public`, logs): no tiene datos que no se puedan regenerar |
+| | El `.env` y los certificados: guárdalos en un gestor de contraseñas |
+
+## Permisos de AWS
+
+El usuario IAM de `AWS_*` necesita, además de sus permisos para los archivos, poder **listar y
+borrar** en `backups/`. Sin `s3:ListBucket` el respaldo se guarda, pero la tarea queda *Fallida* al
+intentar borrar los viejos.
+
+En IAM → *Users* → el usuario de la app → *Add permissions → Create inline policy* → JSON
+(cambia `NOMBRE-BUCKET`):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::NOMBRE-BUCKET",
+      "Condition": { "StringLike": { "s3:prefix": ["backups/", "backups/*"] } }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::NOMBRE-BUCKET/backups/*"
+    }
+  ]
+}
+```
+
+:::caution[El bucket debe ser privado]
+Los respaldos se suben como privados, pero si el bucket tiene una política que hace público todo,
+el respaldo también lo sería. Revisa que *Block all public access* esté encendido.
+:::
+
+## Respaldo manual
+
+**Desde la app** (lo normal): Management → Tareas Programadas → *Respaldo de la base de datos* →
+**Ejecutar**. Hazlo antes de cualquier migración destructiva.
+
+### Respaldo manual desde la terminal
+
+Cuando la app no está disponible. Queda en el home de `ubuntu`, en el mismo servidor: cópialo
+fuera si es importante.
+
+```bash
+cd /opt/md/deploy && sudo docker compose exec -T mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers md' | gzip > ~/md-backup-$(date +%F-%H%M).sql.gz
+```
+
+```bash
+ls -lh ~/md-backup-*.sql.gz
+```
+
+## Restaurar
+
+:::danger
+Restaurar **reemplaza todos los datos actuales** de la base. Si la base todavía tiene algo útil,
+haz antes un respaldo manual.
+:::
+
+<Steps>
+
+1. **Descarga el respaldo** de la consola de S3 (carpeta `backups/`) y súbelo al servidor:
+
+   ```bash
+   scp md-AAAA-MM-DD_HHMMSS.sql.gz ubuntu@<servidor>:~
+   ```
+
+2. **Detén lo que escribe** en la base, para que nadie guarde nada a media restauración:
+
+   ```bash
+   cd /opt/md/deploy && sudo docker compose stop api queue scheduler
+   ```
+
+3. **Restaura**:
+
+   ```bash
+   gunzip -c ~/md-AAAA-MM-DD_HHMMSS.sql.gz | sudo docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" md'
+   ```
+
+4. **Migraciones**, por si el código actual es más nuevo que el respaldo:
+
+   ```bash
+   sudo docker compose run --rm api php artisan migrate --force
+   ```
+
+5. **Vuelve a levantar** y verifica:
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+</Steps>
+
+:::tip[Pruébalo antes de necesitarlo]
+Un respaldo que nunca se restauró no está probado. De vez en cuando, restaura el último en una
+base local (`gunzip -c archivo.sql.gz | mysql -u root -p prueba`) y revisa que estén las tablas y
+los datos.
+:::

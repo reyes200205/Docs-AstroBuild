@@ -1,0 +1,142 @@
+---
+title: Cambiar estado de una Funcionalidad
+description: Endpoint para activar o desactivar una funcionalidad específica dentro de un módulo.
+---
+
+import { Badge, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Permite activar o desactivar una característica específica dentro de un módulo sin afectar las demás herramientas del mismo.
+
+---
+
+## Endpoint
+
+<div style="display: flex; align-items: center; gap: 12px; margin: 16px 0; font-family: monospace; font-size: 1.1rem;">
+  <Badge text="PATCH" variant="caution" size="large" />
+  <code>/api/v1/modules/features/{'{id}'}/status</code>
+</div>
+
+| Entorno | URL Base | Endpoint Completo |
+|---|---|---|
+| **Producción** | `https://api.mdmexico.online` | <code>https://api.mdmexico.online/api/v1/modules/features/{'{id}'}/status</code> |
+| **Local / Dev** | `http://localhost:8000` | <code>http://localhost:8000/api/v1/modules/features/{'{id}'}/status</code> |
+
+---
+
+## Parámetros de la solicitud (Request)
+
+### Parámetros de ruta (Path Parameters)
+
+| Parámetro | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `id` | `integer` | **Obligatorio** | ID numérico de la funcionalidad (`ModuleFeature`) a modificar. |
+
+### Encabezados (Headers)
+
+| Encabezado | Tipo | Valor | Obligatorio |
+|---|---|---|---|
+| `Authorization` | String | `Bearer <token>` | **Sí** |
+| `Accept` | String | `application/json` | **Sí** |
+| `Content-Type` | String | `application/json` | **Sí** |
+
+### Cuerpo de la petición (JSON Body)
+
+| Campo | Tipo | Valores permitidos | Obligatorio | Descripción |
+|---|---|---|---|---|
+| `status` | `string` | `"active"` \| `"inactive"` | **Sí** | Nuevo estado asignado a la funcionalidad. |
+
+#### Ejemplo del Body (JSON)
+```json
+{
+  "status": "active"
+}
+```
+
+---
+
+## Ejemplos de uso
+
+<Tabs>
+  <TabItem label="cURL">
+```bash
+curl --request PATCH \
+  --url https://api.mdmexico.online/api/v1/modules/features/5/status \
+  --header 'Authorization: Bearer 1|p8Qe3Rk...' \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "status": "active"
+  }'
+```
+  </TabItem>
+  <TabItem label="JavaScript (Fetch)">
+```javascript
+const response = await fetch('https://api.mdmexico.online/api/v1/modules/features/5/status', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer 1|p8Qe3Rk...',
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ status: 'active' }),
+});
+const result = await response.json();
+console.log(result);
+```
+  </TabItem>
+</Tabs>
+
+---
+
+## Respuestas (Responses)
+
+### <Badge text="200 OK" variant="success" /> Estado actualizado correctamente
+
+```json
+{
+  "success": true,
+  "message": "Estado de la funcionalidad actualizado correctamente.",
+  "data": {
+    "id": 5,
+    "module_id": 1,
+    "key": "rh.vacations",
+    "name": "Gestión de Vacaciones",
+    "description": "Solicitud, aprobación y cálculo automático de saldos de vacaciones",
+    "permission_prefixes": [
+      "vacations.",
+      "requests."
+    ],
+    "order": 1,
+    "status": "active",
+    "created_at": "2025-01-10T12:00:00Z",
+    "updated_at": "2026-10-05T14:20:00Z"
+  }
+}
+```
+
+---
+
+### Códigos de Error
+
+#### <Badge text="401 Unauthorized" variant="danger" /> No autenticado
+El token no fue provisto en la cabecera `Authorization` o ha caducado.
+
+```json
+{
+  "message": "Unauthenticated."
+}
+```
+
+#### <Badge text="422 Unprocessable Content" variant="danger" /> Validación incorrecta
+El campo `status` no fue provisto o tiene un valor distinto de `"active"` o `"inactive"`.
+
+```json
+{
+  "message": "The selected status is invalid.",
+  "errors": {
+    "status": [
+      "The selected status is invalid."
+    ]
+  }
+}
+```
