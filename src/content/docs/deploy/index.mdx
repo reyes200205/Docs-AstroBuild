@@ -11,34 +11,9 @@ las publica en **GHCR** y el servidor solo las descarga y las ejecuta.
 
 ## Arquitectura
 
-```text
-                     Usuario
-                        │  HTTPS (certificado público de Cloudflare)
-                        ▼
-              ┌───────────────────┐
-              │    Cloudflare     │  DNS · proxy · HTTP→HTTPS · SSL "Full (strict)"
-              └─────────┬─────────┘
-                        │  HTTPS 443 (certificado Origin CA)
-                        ▼
- ┌──────── Security Group de AWS: 443 solo desde rangos de Cloudflare ────────┐
- │  EC2 t3.small · Ubuntu 24.04 · UFW · Docker                               │
- │                                                                           │
- │   nginx :443 ─┬─ mdmexico.online ──────► web   (Nuxt/Nitro :3000)          │
- │   (único      └─ api.mdmexico.online ──► api   (PHP-FPM :9000)             │
- │    puerto                                  │                              │
- │    publicado)        queue (worker) ───────┤   misma imagen que api       │
- │                      scheduler (cron) ─────┤                              │
- │                                            ▼                              │
- │                                   mysql 8.4 (sin puertos)                 │
- └───────────────────────────────────────────────────────────────────────────┘
-                        │ salida
-                        ▼
-        AWS S3 · Firebase (push) · Groq/Gemini (IA) · SMTP
-```
+Esta imagen es solo para fines ilustrativos y no representa la arquitectura real de producción.
+![Diagrama de Arquitectura de Infraestructura](../../../assets/infrestructure.png)
 
-Solo `nginx` publica un puerto (443). MySQL, PHP-FPM y Nitro viven únicamente en la red interna
-de Docker. Los detalles de cada pieza están en [Contenedores](/deploy/infraestructura/contenedores/)
-y [Red y TLS](/deploy/infraestructura/red-y-tls/).
 
 ## Cómo llega un cambio a producción
 

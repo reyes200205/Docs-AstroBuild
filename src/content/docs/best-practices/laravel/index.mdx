@@ -1,0 +1,506 @@
+---
+title: Introducción
+description: Estándares, convenciones y directrices de desarrollo para la plataforma Master Drilling.
+---
+
+Esta hoja de referencia tiene como objetivo ofrecer consejos de seguridad a los desarrolladores que crean aplicaciones con Laravel. Su propósito es abarcar todas las vulnerabilidades habituales y explicar cómo garantizar que tus aplicaciones de Laravel sean seguras.
+
+El marco Laravel ofrece funciones de seguridad integradas y está diseñado para ser seguro de forma predeterminada. Sin embargo, también proporciona flexibilidad adicional para casos de uso complejos. Esto significa que los desarrolladores que no estén familiarizados con el funcionamiento interno de Laravel pueden caer en la trampa de utilizar funciones complejas de una forma que no sea segura. Esta guía tiene como objetivo formar a los desarrolladores para que eviten los errores habituales y desarrollen aplicaciones Laravel de forma segura.
+
+
+## Lo básico
+
+Asegúrate de que tu aplicación no esté en modo de depuración mientras está en producción. Para desactivar el modo de depuración, establece tu variable de entorno APP_DEBUG en false:
+
+```env
+APP_DEBUG=false
+```
+
+Asegúrate de que tu clave de aplicación se haya generado. Las aplicaciones Laravel utilizan la clave de la aplicación para el cifrado simétrico y los hashes SHA256, como el cifrado de cookies, las URLs firmadas, los tokens de restablecimiento de contraseña y el cifrado de datos de sesión. Para generar la clave de la aplicación, puedes ejecutar el comando Artisan key:generate:
+
+```bash
+php artisan key:generate
+```
+
+Asegúrate de que la configuración de PHP sea segura. Puedes consultar la hoja de trucos de configuración de PHP para obtener más información sobre las configuraciones seguras de PHP.
+
+Establece permisos seguros de archivos y directorios en tu aplicación Laravel. En general, todos los directorios de Laravel deben configurarse con un nivel de permiso máximo de 775 y los archivos no ejecutables con un nivel de permiso máximo de 664. Los archivos ejecutables, como Artisan o los scripts de implementación, deben proporcionarse con un nivel de permiso máximo de 775.
+
+Asegúrate de que tu aplicación no tenga dependencias vulnerables.
+
+
+## Seguridad de Cookies y Gestión de Sesiones
+
+Por defecto, Laravel está configurado de forma segura. Sin embargo, si cambias la configuración de cookies o sesiones, asegúrate de lo siguiente:
+
+Habilita el middleware de cifrado de cookies si utilizas el almacén de sesiones de cookies o si almacenas algún tipo de dato que no deba ser legible o manipulado por los clientes. En general, esto debe estar habilitado a menos que tu aplicación tenga un caso de uso muy específico que requiera deshabilitarlo. Para habilitar este middleware, simplemente agrega el middleware `EncryptCookies` al grupo de middleware `web` en tu clase `App\Http\Kernel`:
+
+```php
+/**
+ * The application's route middleware groups.
+ *
+ * @var array
+ */
+protected $middlewareGroups = [
+    'web' => [
+        \App\Http\Middleware\EncryptCookies::class,
+        // ...
+    ],
+    // ...
+];
+```
+
+Habilita el atributo `HttpOnly` en las cookies de sesión a través del archivo `config/session.php`, de modo que las cookies de sesión sean inaccesibles desde JavaScript:
+
+```php
+'http_only' => true,
+```
+
+A menos que las cookies deban compartirse con subdominios, establece `domain` en `null` en `config/session.php` para omitir el atributo Domain. Esto restringe a dónde envía el navegador la cookie al host de origen; no impide que subdominios hermanos establezcan cookies del dominio principal con el mismo nombre. Para una mayor protección contra estas colisiones de cookies, utiliza una cookie de sesión `__Host-` con `Secure`, `Path=/` y sin atributo `Domain` en los navegadores compatibles:
+
+```php
+'domain' => null,
+```
+
+Configura el atributo de cookie `SameSite` en `lax` o `strict` en tu archivo `config/session.php` para restringir tus cookies a un contexto de origen (*first-party*) o mismo sitio:
+
+```php
+'same_site' => 'lax',
+```
+
+Si tu aplicación funciona exclusivamente sobre HTTPS, se recomienda establecer la opción de configuración `secure` en `true` en el archivo `config/session.php` para protegerse contra ataques de intermediario (*man-in-the-middle*). Si tu aplicación combina HTTP y HTTPS, se recomienda establecer este valor en `null` para que el atributo `secure` se asigne automáticamente al procesar peticiones HTTPS:
+
+```php
+'secure' => null,
+```
+
+Asegúrate de configurar un tiempo de inactividad de sesión bajo. OWASP recomienda un tiempo de inactividad de 2 a 5 minutos para aplicaciones críticas y de 15 a 30 minutos para aplicaciones de bajo riesgo. Esto se puede configurar en el archivo `config/session.php`:
+
+```php
+'lifetime' => 15,
+```
+
+También puedes consultar la guía de seguridad de cookies para aprender más sobre la seguridad de cookies y los atributos mencionados anteriormente.
+
+
+## Autenticación
+
+### Guards y Providers
+
+En su núcleo, las funciones de autenticación de Laravel están compuestas por **guards** y **providers**. Los guards definen cómo se autentican los usuarios para cada petición. Los providers definen cómo se recuperan los usuarios desde el almacenamiento persistente.
+
+Laravel incluye un guard de sesión que mantiene el estado mediante almacenamiento de sesión y cookies, y un guard de token para tokens de API.
+
+En cuanto a los providers, Laravel incluye un provider de Eloquent para recuperar usuarios usando el ORM Eloquent y un provider de base de datos para recuperar usuarios usando el constructor de consultas (*query builder*).
+
+Los guards y providers se configuran en el archivo `config/auth.php`. Laravel también ofrece la posibilidad de crear guards y providers personalizados.
+
+### Kits de Inicio (Starter Kits)
+
+Laravel ofrece una amplia variedad de kits de inicio oficiales que incluyen funciones de autenticación listas para usar:
+
+- **Laravel Breeze**: Una implementación simple y ligera de las funciones de autenticación de Laravel, incluyendo inicio de sesión, registro, restablecimiento de contraseña, verificación de correo y confirmación de contraseña.
+- **Laravel Fortify**: Un backend de autenticación sin interfaz gráfica (*headless*) que incluye las funciones de autenticación anteriores junto con autenticación de dos factores (2FA).
+- **Laravel Jetstream**: Un kit de inicio de aplicación robusto que proporciona una interfaz de usuario construida sobre Laravel Fortify.
+
+Se recomienda utilizar uno de estos kits de inicio para garantizar una autenticación robusta y segura en tus aplicaciones Laravel.
+
+### Paquetes de Autenticación de API
+
+Laravel también ofrece los siguientes paquetes oficiales para autenticación de APIs:
+
+- **Passport**: Un servidor de autenticación OAuth2 completo.
+- **Sanctum**: Un sistema de autenticación ligero basado en tokens de API y cookies de sesión para SPAs.
+
+Kits de inicio como Fortify y Jetstream cuentan con soporte integrado para Sanctum.
+
+
+## Asignación Masiva (Mass Assignment)
+
+La asignación masiva es una vulnerabilidad común en aplicaciones web que utilizan un ORM como Eloquent de Laravel.
+
+Ocurre cuando se abusa de un patrón de asignación masiva del ORM para modificar campos o columnas de la base de datos que el usuario no debería poder alterar.
+
+Considera el siguiente código:
+
+```php
+Route::any('/profile', function (Request $request) {
+    $request->user()->forceFill($request->all())->save();
+
+    $user = $request->user()->fresh();
+
+    return response()->json(compact('user'));
+})->middleware('auth');
+```
+
+La ruta anterior permite al usuario autenticado modificar su información de perfil.
+
+Sin embargo, supongamos que existe una columna `is_admin` en la tabla `users`. Probablemente no quieras que el usuario pueda cambiar este valor. El código anterior permite a los usuarios alterar cualquier columna de su fila en la tabla `users`, creando una vulnerabilidad crítica de asignación masiva.
+
+Laravel incluye mecanismos integrados por defecto para prevenir esta vulnerabilidad. Asegúrate de seguir estas pautas:
+
+- Delimita los parámetros permitidos que deseas actualizar usando `$request->only` o `$request->validated` en lugar de `$request->all`.
+- No desprotejas modelos ni asignes un array vacío a la propiedad `$guarded` (`$guarded = []`). Al hacer esto desactivas por completo la protección de asignación masiva de Laravel.
+- Evita usar métodos como `forceFill` o `forceCreate` que omiten el mecanismo de protección, a menos que estés pasando un array previamente validado y saneado.
+
+
+## Inyección SQL (SQL Injection)
+
+Los ataques de inyección SQL ocurren cuando un atacante envía datos maliciosos en las peticiones para interferir con las consultas a la base de datos.
+
+### Protección contra Inyección SQL en Eloquent ORM
+
+Por defecto, el ORM Eloquent protege contra la inyección SQL parametrizando las consultas y utilizando enlaces de datos (*bindings*). Considera la siguiente consulta:
+
+```php
+use App\Models\User;
+
+User::where('email', $email)->get();
+```
+
+El código anterior genera la siguiente consulta preparada:
+
+```sql
+select * from `users` where `email` = ?
+```
+
+Incluso si `$email` contiene datos no confiables proporcionados por el usuario, estás protegido contra ataques de inyección SQL.
+
+### Inyección SQL en Consultas Crudas (Raw Queries)
+
+Laravel también ofrece métodos y expresiones en bruto (*raw*) para formular consultas complejas o específicas del motor de base de datos.
+
+Aunque ofrecen gran flexibilidad, debes tener la precaución de utilizar siempre enlaces de datos SQL (*bindings*). Considera el siguiente ejemplo vulnerable:
+
+```php
+use Illuminate\Support\Facades\DB;
+use App\Models\User;
+
+User::whereRaw('email = "'.$request->input('email').'"')->get();
+DB::table('users')->whereRaw('email = "'.$request->input('email').'"')->get();
+```
+
+Ambas líneas ejecutan una consulta vulnerable a inyección SQL porque concatenan directamente la entrada del usuario sin usar enlaces de datos:
+
+```sql
+select * from `users` where `email` = "valor del parámetro de consulta email"
+```
+
+Recuerda siempre utilizar *bindings* de SQL para datos de entrada. La corrección se realiza así:
+
+```php
+use App\Models\User;
+
+User::whereRaw('email = ?', [$request->input('email')])->get();
+```
+
+También puedes usar *bindings* con nombre (*named bindings*):
+
+```php
+use App\Models\User;
+
+User::whereRaw('email = :email', ['email' => $request->input('email')])->get();
+```
+
+### Inyección SQL en Nombres de Columnas
+
+Nunca debes permitir que la entrada del usuario determine directamente los nombres de las columnas referenciadas en tus consultas.
+
+Las siguientes consultas pueden ser vulnerables:
+
+```php
+use App\Models\User;
+
+User::where($request->input('colname'), 'somedata')->get();
+User::query()->orderBy($request->input('sortBy'))->get();
+```
+
+Aunque Laravel cuenta con funciones para escapar nombres de columnas, algunos motores de base de datos pueden ser vulnerables debido a que la vinculación de parámetros (*binding*) no aplica a nombres de columnas e identificadores.
+
+Valida siempre de forma estricta los nombres de columnas permitidos:
+
+```php
+use App\Models\User;
+
+$request->validate(['sortBy' => 'in:price,updated_at']);
+User::query()->orderBy($request->validated()['sortBy'])->get();
+```
+
+### Inyección SQL en Reglas de Validación
+
+Ciertas reglas de validación permiten indicar nombres de columnas. Dichas reglas pueden ser vulnerables de la misma manera si se alimentan directamente con datos del usuario:
+
+```php
+use Illuminate\Validation\Rule;
+
+$request->validate([
+    'id' => Rule::unique('users')->ignore($id, $request->input('colname'))
+]);
+```
+
+Por debajo, el código anterior ejecuta una consulta similar a:
+
+```php
+use App\Models\User;
+
+$colname = $request->input('colname');
+User::where($colname, $request->input('id'))->where($colname, '<>', $id)->count();
+```
+
+Dado que el nombre de columna proviene de la entrada del usuario, representa un riesgo de inyección.
+
+
+## Cross-Site Scripting (XSS)
+
+Los ataques XSS consisten en la inyección de scripts maliciosos (como JavaScript) en páginas vistas por otros usuarios.
+
+Las directivas de impresión de Blade `{{ }}` escapan caracteres HTML automáticamente usando `htmlspecialchars`. Esto es seguro para contenido HTML estándar y atributos entre comillas, pero no valida esquemas de URLs (`javascript:`) ni contextos dentro de etiquetas `<script>` o estilos CSS.
+
+Laravel también permite imprimir datos sin escapar utilizando la sintaxis `{!! !!}`. Esta sintaxis **nunca** debe utilizarse con datos proporcionados por usuarios o no confiables:
+
+```blade
+{{-- Código vulnerable a XSS: --}}
+{!! request()->input('somedata') !!}
+```
+
+En su lugar, renderiza texto no confiable escapándolo mediante la sintaxis estándar:
+
+```blade
+<span>{{ request()->input('somedata') }}</span>
+```
+
+Para incrustar datos en bloques de JavaScript, utiliza el método `Js::from(...)` de Laravel:
+
+```blade
+<script>
+    let userData = {{ Js::from($userData) }};
+</script>
+```
+
+
+## Carga de Archivos sin Restricciones (Unrestricted File Uploads)
+
+Los ataques de carga de archivos ocurren cuando atacantes suben archivos maliciosos para comprometer el servidor web o los clientes.
+
+### Valida Siempre el Tipo y Tamaño del Archivo
+
+Valida siempre los tipos de archivos permitidos y define un tamaño máximo:
+
+```php
+$request->validate([
+    'photo' => 'file|max:10240|mimes:jpg,bmp,png'
+]);
+```
+
+- Los ataques de denegación de servicio (DoS) por almacenamiento saturan el disco del servidor mediante subidas de archivos gigantescos.
+- Los ataques de ejecución remota de código (RCE) buscan subir scripts ejecutables (como archivos `.php`) y acceder directamente a su ruta pública para ejecutarlos.
+
+La regla `mimes` infiere el tipo a partir del contenido, pero debes generar siempre nombres de archivo únicos en el servidor, guardar los archivos fuera del directorio público (`webroot`) o en servicios como Amazon S3, y asegurarte de que el servidor web no tenga permisos de ejecución en la carpeta de subidas.
+
+### No Dependas de la Entrada del Usuario para Rutas o Nombres de Archivo
+
+Si permites que datos del usuario construyan la ruta de guardado, un atacante puede sobrescribir archivos del sistema:
+
+```php
+Route::post('/upload', function (Request $request) {
+    $request->file('file')->storeAs(auth()->id(), $request->input('filename'));
+
+    return back();
+});
+```
+
+Si el usuario envía un nombre como `../2/filename.pdf`, guardará el archivo fuera del directorio previsto.
+
+Utiliza la función `basename` de PHP para eliminar secuencias de directorios:
+
+```php
+Route::post('/upload', function (Request $request) {
+    $request->file('file')->storeAs(auth()->id(), basename($request->input('filename')));
+
+    return back();
+});
+```
+
+### Evita Procesar Archivos ZIP o XML sin Validación
+
+Los archivos XML pueden exponer tu aplicación a ataques XXE (*XML External Entity*) o ataques de expansión de entidades (*Billion Laughs*). Al procesar archivos ZIP, puedes exponerte a bombas de descompresión (*zip bombs*).
+
+
+## Salto de Directorio (Path Traversal)
+
+Un ataque de salto de directorio (*path traversal*) busca acceder a archivos arbitrarios manipulando rutas con secuencias `../` o rutas absolutas:
+
+```php
+Route::get('/download', function(Request $request) {
+    return response()->download(storage_path('content/').$request->input('filename'));
+});
+```
+
+Un atacante podría solicitar `../../.env` y descargar las credenciales de tu aplicación.
+
+Utiliza siempre `basename` o una lista permitida (*allowlist*) para sanitizar el nombre del archivo:
+
+```php
+Route::get('/download', function(Request $request) {
+    return response()->download(storage_path('content/').basename($request->input('filename')));
+});
+```
+
+
+## Redirección Abierta (Open Redirection)
+
+Ocurre cuando la aplicación redirige a URLs externas arbitrarias especificadas por el usuario:
+
+```php
+Route::get('/redirect', function (Request $request) {
+    return redirect($request->input('url'));
+});
+```
+
+Los atacantes utilizan estas redirecciones para dar apariencia legítima a correos de phishing que llevan a sitios maliciosos. Valida que la URL pertenezca a tu propio dominio antes de redirigir.
+
+
+## Falsificación de Petición en Sitios Cruzados (CSRF)
+
+CSRF (*Cross-Site Request Forgery*) induce al navegador de una víctima autenticada a ejecutar acciones no deseadas en tu aplicación.
+
+Laravel incluye protección CSRF integrada a través del middleware `VerifyCsrfToken`:
+
+```php
+/**
+ * The application's route middleware groups.
+ *
+ * @var array
+ */
+protected $middlewareGroups = [
+    'web' => [
+        // ...
+        \App\Http\Middleware\VerifyCsrfToken::class,
+        // ...
+    ],
+];
+```
+
+En todos tus formularios Blade con métodos `POST`, `PUT`, `PATCH` o `DELETE`, incluye la directiva `@csrf`:
+
+```html
+<form method="POST" action="/profile">
+    @csrf
+
+    <!-- Equivalente a: -->
+    <input type="hidden" name="_token" value="{{ csrf_token() }}" />
+</form>
+```
+
+Para peticiones AJAX o Fetch, incluye el encabezado `X-CSRF-TOKEN`.
+
+Solo debes excluir rutas de la protección CSRF (mediante `$except`) cuando se trate de rutas verdaderamente sin estado (*stateless*), como webhooks externos protegidos por firma.
+
+
+## Inyección de Comandos (Command Injection)
+
+Ocurre al ejecutar comandos en la consola del sistema operativo utilizando datos no sanitizados:
+
+```php
+public function verifyDomain(Request $request)
+{
+    exec('whois '.$request->input('domain'));
+}
+```
+
+Evita ejecutar comandos de sistema cuando existan extensiones o librerías PHP equivalentes. Si es indispensable, utiliza el componente `Symfony\Component\Process\Process` pasando los argumentos como elementos individuales de un array en lugar de una cadena concatenada.
+
+
+## Otras Inyecciones
+
+Funciones como `unserialize`, `eval` y `extract` son de alto riesgo cuando se utilizan con datos provenientes del usuario:
+
+```php
+unserialize($request->input('data'));
+eval($request->input('data'));
+extract($request->all());
+```
+
+Evita por completo pasar datos no confiables a estas funciones.
+
+
+## Limitación de Peticiones (Rate Limiting)
+
+Laravel proporciona mecanismos nativos para proteger rutas contra abusos, ataques de fuerza bruta y saturación.
+
+### 1. Por Ruta
+
+Aplica un límite con el middleware `throttle`:
+
+```php
+Route::get('/profile', function () {
+    return 'User profile';
+})->middleware('throttle:10,1'); // 10 peticiones por minuto
+```
+
+### 2. Por Grupo de Rutas
+
+Aplica un límite a varias rutas agrupadas:
+
+```php
+Route::middleware('throttle:20,1')->group(function () {
+    Route::get('/posts', fn () => 'Posts');
+    Route::get('/comments', fn () => 'Comments');
+});
+```
+
+### 3. Limitador Personalizado
+
+Define un limitador en tu proveedor de servicios (como `AppServiceProvider` o `RouteServiceProvider`):
+
+```php
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
+
+RateLimiter::for('custom-limit', function ($request) {
+    return Limit::perMinute(5)->by($request->user()?->id ?: $request->ip());
+});
+```
+
+Y aplícalo a tus rutas:
+
+```php
+Route::middleware('throttle:custom-limit')->get('/dashboard', fn () => 'Dashboard');
+```
+
+### 4. Límite Global de API / Web
+
+Configura límites globales en los grupos de middleware:
+
+```php
+protected $middlewareGroups = [
+    'api' => [
+        'throttle:60,1', // 60 peticiones por minuto para la API
+        // ...
+    ],
+
+    'web' => [
+        'throttle:30,1', // 30 peticiones por minuto para web
+        // ...
+    ],
+];
+```
+
+
+## Cabeceras de Seguridad (Security Headers)
+
+Se recomienda configurar las siguientes cabeceras de respuesta HTTP en tu servidor o middleware:
+
+- `X-Frame-Options: SAMEORIGIN`
+- `X-Content-Type-Options: nosniff`
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` (solo sobre HTTPS)
+- `Content-Security-Policy`
+
+
+## Referencias
+
+- [Documentación oficial de Laravel sobre Autenticación](https://laravel.com/docs/authentication)
+- [Documentación oficial de Laravel sobre Autorización](https://laravel.com/docs/authorization)
+- [Documentación oficial de Laravel sobre CSRF](https://laravel.com/docs/csrf)
+- [Documentación oficial de Laravel sobre Validación](https://laravel.com/docs/validation)
+- [OWASP Laravel Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Laravel_Cheat_Sheet.html)

@@ -45,6 +45,8 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Master Drilling Docs',
+			// Archivo de estilos personalizados (color de acento #4782cb)
+			customCss: ['./src/styles/custom.css'],
 			// Interfaz de Starlight en español (búsqueda, "En esta página", navegación...).
 			defaultLocale: 'root',
 			locales: { root: { label: 'Español', lang: 'es' } },
@@ -84,13 +86,18 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Operación',
+					label: 'Producción',
 					collapsed: true,
 					items: [
 						{ label: 'Visión general', slug: 'deploy' },
-						{ label: 'Montar el servidor desde cero', slug: 'deploy/instalacion' },
+						{
+							label: 'Instalación',
+							collapsed: true,
+							items: [{ label: 'Despliegue Servidor', slug: 'deploy/instalacion' }],
+						},
 						{
 							label: 'Infraestructura',
+							collapsed: true,
 							items: [
 								{ label: 'Servidor', slug: 'deploy/infraestructura/servidor' },
 								{ label: 'Contenedores', slug: 'deploy/infraestructura/contenedores' },
@@ -100,10 +107,12 @@ export default defineConfig({
 						},
 						{
 							label: 'Configuración',
+							collapsed: true,
 							items: [{ label: 'Variables de entorno', slug: 'deploy/configuracion/variables' }],
 						},
 						{
-							label: 'Operación',
+							label: 'Mantenimiento y Despliegue',
+							collapsed: true,
 							items: [
 								{ label: 'Comandos útiles', slug: 'deploy/operacion/useful-commands' },
 								{ label: 'Actualizar producción', slug: 'deploy/operacion/actualizar' },
@@ -114,13 +123,15 @@ export default defineConfig({
 								{ label: 'Diagnóstico', slug: 'deploy/operacion/diagnostico' },
 							],
 						},
-						{ label: 'Estado y pendientes', slug: 'deploy/pendientes' },
 					],
 				},
 				{
 					label: 'Buenas Prácticas',
 					collapsed: true,
-					items: [{ label: 'Introducción', slug: 'best-practices' }],
+					items: [
+						{ label: 'Introducción', slug: 'best-practices' },
+						{ label: 'Laravel', slug: 'best-practices/laravel' },
+					],
 				},
 			],
 		}),

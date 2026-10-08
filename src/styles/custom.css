@@ -1,0 +1,34 @@
+/* Configuración del color de acento y tipografía para Starlight */
+:root {
+	--sl-color-accent-low: #1b3252;
+	--sl-color-accent: #4782cb;
+	--sl-color-accent-high: #a6cbfa;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #dbe8f8;
+	--sl-color-accent: #4782cb;
+	--sl-color-accent-high: #1f487c;
+}
+
+/* Título principal en la barra superior (Header Logo) */
+.site-title {
+	font-weight: 700 !important;
+	font-size: 1.35rem !important;
+	letter-spacing: -0.01em;
+}
+
+/* Menú lateral (Sidebar): tipografía más gruesa y clara */
+.sidebar-pane {
+	font-weight: 500;
+}
+
+/* Elementos seleccionados en el menú lateral */
+.sidebar-pane a[aria-current='page'] {
+	font-weight: 700 !important;
+}
+
+/* Encabezados de grupos en el menú lateral */
+.sidebar-pane summary {
+	font-weight: 600 !important;
+}
