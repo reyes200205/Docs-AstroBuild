@@ -29,6 +29,13 @@ export default defineConfig({
 	},
 
 	vite: {
+		ssr: {
+			// satteri (lo usan <Tabs>, <Steps> y <FileTree> de Starlight al renderizar en servidor)
+			// carga un binario nativo .node con require() relativo a su propio paquete. Si Vite lo
+			// mete en un chunk, ese require falla y la página responde 500. Se deja como import externo
+			// para que se resuelva desde node_modules y el adaptador de Vercel copie el binario.
+			external: ['satteri'],
+		},
 		build: {
 			// Sin source maps en producción.
 			sourcemap: false,
@@ -53,6 +60,7 @@ export default defineConfig({
 				{ label: 'Introducción', slug: 'index' },
 				{
 					label: 'Documentación API',
+					collapsed: true,
 					items: [
 						{
 							label: 'Autenticación',
@@ -108,6 +116,11 @@ export default defineConfig({
 						},
 						{ label: 'Estado y pendientes', slug: 'deploy/pendientes' },
 					],
+				},
+				{
+					label: 'Buenas Prácticas',
+					collapsed: true,
+					items: [{ label: 'Introducción', slug: 'best-practices' }],
 				},
 			],
 		}),

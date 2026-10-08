@@ -1,0 +1,67 @@
+---
+title: Introducción a Buenas Prácticas
+description: Estándares, convenciones y directrices de desarrollo para la plataforma Master Drilling.
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+Esta guía establece los **estándares de calidad, arquitectura y flujo de trabajo** para el equipo de desarrollo de la plataforma Master Drilling. El objetivo principal es garantizar que el código del backend (`laravel-api-kit`) y del frontend (`nuxt-app-kit`) sea consistente, mantenible, seguro y escalable a largo plazo.
+
+<Aside type="tip" title="Principio fundamental">
+El código se escribe una vez, pero se lee, refactoriza y mantiene docenas de veces. Cada contribución debe priorizar la claridad, el tipado fuerte y la separación de responsabilidades sobre atajos temporales.
+</Aside>
+
+## Pilares de desarrollo
+
+<CardGrid>
+	<Card title="Consistencia en el monorepo" icon="document">
+		Mantener convenciones de estilo homogéneas, nombres predecibles y estructuras coherentes tanto en Laravel como en Nuxt.
+	</Card>
+	<Card title="Seguridad desde el diseño" icon="warning">
+		Validación estricta de entradas (Form Requests), autorización por políticas (Gates/Policies) y protección de datos sensibles.
+	</Card>
+	<Card title="Calidad y mantenibilidad" icon="approve-check">
+		Tipado estricto con TypeScript en Nuxt, tipos nativos de PHP 8.4, y pruebas automáticas para flujos críticos de negocio.
+	</Card>
+	<Card title="Rendimiento y eficiencia" icon="rocket">
+		Optimización de consultas a base de datos (evitar N+1), indexación adecuada, control de caché y consumo eficiente de memoria.
+	</Card>
+</CardGrid>
+
+---
+
+## Qué encontrarás en esta sección
+
+### 1. Gestión de dependencias
+- **Frontend (Node / pnpm)**: Uso obligatorio de `pnpm`, control estricto del archivo `pnpm-lock.yaml`, auditoría periódica de vulnerabilidades con `pnpm audit` y políticas para evitar librerías redundantes.
+- **Backend (PHP / Composer)**: Manejo de versiones exactas, distinción clara entre `require` y `require-dev`, y automatización de actualizaciones seguras.
+
+### 2. Estructura y arquitectura del proyecto
+- **Separación de capas en Laravel**: Controladores delgados (Lean Controllers), Servicios de Dominio (Domain Services), Form Requests para validación y Recursos (API Resources / DTOs) para respuestas estandarizadas.
+- **Arquitectura en Nuxt 4**: Componentes atómicos con Nuxt UI, Composables para lógica reutilizable, manejo centralizado de estado y tipado estricto en el consumo de endpoints.
+
+### 3. Flujo de trabajo y Git
+- **Estrategia de ramas**: Modelo Git Flow adaptado (`main`, `develop`, ramas de características `feature/*` y correcciones `fix/*`).
+- **Commits semánticos**: Formato convencional (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`) para trazabilidad clara en el historial del repositorio.
+- **Revisiones de código (Pull Requests)**: Criterios de aceptación antes de fusionar código a las ramas principales.
+
+### 4. Seguridad y manejo de variables de entorno
+- Ningún secreto, credencial de API, llave S3 o token de base de datos debe ser versionado en Git.
+- Uso riguroso de archivos `.env.example` sincronizados con cualquier nueva variable requerida por el sistema.
+
+---
+
+## Convenciones de código rápidas
+
+| Aspecto | Backend (`laravel-api-kit`) | Frontend (`nuxt-app-kit`) |
+|---|---|---|
+| **Lenguaje** | PHP 8.4 | TypeScript / Vue 3 |
+| **Estilo / Linter** | Laravel Pint / PSR-12 | ESLint + Prettier |
+| **Archivos / Clases** | PascalCase (`UserController.php`) | PascalCase en componentes (`UserCard.vue`), camelCase en composables (`useAuth.ts`) |
+| **Métodos y funciones** | camelCase (`findActiveUsers()`) | camelCase (`fetchUserProfile()`) |
+| **Tablas y columnas DB** | snake_case plural (`users`, `created_at`) | — |
+| **Rutas API** | kebab-case (`/api/v1/auth/reset-password`) | — |
+
+<Aside type="caution" title="Regla de oro de documentación">
+Cualquier cambio que modifique una convención de arquitectura, agregue una variable de entorno obligatoria o cambie un flujo de Git debe quedar reflejado de inmediato en esta documentación.
+</Aside>

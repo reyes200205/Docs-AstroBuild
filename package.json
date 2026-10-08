@@ -13,6 +13,7 @@
     "@astrojs/starlight": "^0.42.5",
     "@astrojs/vercel": "^11.0.11",
     "astro": "^7.2.10",
+    "satteri": "^0.10.5",
     "sharp": "^0.35.3"
   }
 }
