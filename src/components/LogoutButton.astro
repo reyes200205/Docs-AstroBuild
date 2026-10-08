@@ -1,5 +1,5 @@
 ---
-// Sustituye a SocialIcons de Starlight (header y menú móvil) para añadir "Cerrar sesión".
+// Sustituye a SocialIcons de Starlight (header y menú móvil) para añadir menú de usuario.
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 
 const user = Astro.locals.user;
@@ -8,39 +8,114 @@ const user = Astro.locals.user;
 <Default />
 {
 	user && (
-		<form method="post" action="/api/auth/logout" class="logout">
-			<span class="user" title={user.email}>{user.name}</span>
-			<button type="submit">Cerrar sesión</button>
-		</form>
+		<details class="user-menu">
+			<summary class="user-trigger" title={user.email}>
+				<span class="user-name">{user.name}</span>
+				<svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="6 9 12 15 18 9" />
+				</svg>
+			</summary>
+
+			<div class="dropdown-menu">
+				<form method="post" action="/api/auth/logout">
+					<button type="submit" class="logout-btn">
+						Cerrar sesión
+					</button>
+				</form>
+			</div>
+		</details>
 	)
 }
 
+<script>
+	// Cierra el menú al hacer click fuera
+	document.addEventListener('click', (e) => {
+		const target = e.target as HTMLElement;
+		const details = document.querySelector<HTMLDetailsElement>('.user-menu');
+		if (details && details.open && !details.contains(target)) {
+			details.removeAttribute('open');
+		}
+	});
+</script>
+
 <style>
-	.logout {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+	.user-menu {
+		position: relative;
+		display: inline-block;
+		user-select: none;
 	}
-	.user {
+
+	.user-trigger {
+		list-style: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		color: var(--sl-color-gray-2);
 		font-size: var(--sl-text-sm);
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid transparent;
+		transition: all 0.15s ease;
+	}
+
+	.user-trigger::-webkit-details-marker {
+		display: none;
+	}
+
+	.user-trigger:hover {
+		color: var(--sl-color-text-accent);
+		border-color: var(--sl-color-gray-5);
+	}
+
+	.user-name {
 		max-width: 12rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	button {
-		background: none;
+
+	.chevron {
+		transition: transform 0.2s ease;
+	}
+
+	.user-menu[open] .chevron {
+		transform: rotate(180deg);
+	}
+
+	.dropdown-menu {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 0.35rem);
+		min-width: 9rem;
+		background: var(--sl-color-bg-nav, var(--sl-color-bg));
 		border: 1px solid var(--sl-color-gray-5);
 		border-radius: 0.375rem;
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+		padding: 0.25rem;
+		z-index: 100;
+	}
+
+	form {
+		margin: 0;
+	}
+
+	.logout-btn {
+		width: 100%;
+		background: none;
+		border: none;
+		border-radius: 0.25rem;
 		color: var(--sl-color-white);
 		cursor: pointer;
 		font: inherit;
 		font-size: var(--sl-text-sm);
-		padding: 0.25rem 0.75rem;
+		padding: 0.4rem 0.75rem;
+		text-align: left;
+		transition: background 0.12s ease, color 0.12s ease;
 	}
-	button:hover {
-		border-color: var(--sl-color-text-accent);
+
+	.logout-btn:hover {
+		background: var(--sl-color-gray-5);
 		color: var(--sl-color-text-accent);
 	}
 </style>
