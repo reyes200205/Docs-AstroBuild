@@ -9,7 +9,7 @@ El tráfico pasa por cuatro capas, de afuera hacia adentro:
 |---|---|
 | **Cloudflare** | DNS, proxy, HTTP→HTTPS, certificado público, protección DDoS |
 | **Security Group de AWS** | Solo deja entrar al 443 desde los rangos de Cloudflare: nadie llega al servidor sin pasar por Cloudflare |
-| **UFW** | Protege los servicios del host (SSH). No filtra los puertos de Docker ([por qué](/deploy/infraestructura/servidor/#firewall-ufw)) |
+| **UFW** | Protege los servicios del host (SSH). No filtra los puertos de Docker ([por qué](/deploy/infrastructure/server/#firewall-ufw)) |
 | **nginx** | Único contenedor con puerto publicado; reparte entre `web` y `api` |
 
 ## Cloudflare
@@ -36,13 +36,34 @@ registros deben ir con proxy.
 - La llave privada se generó en el servidor y nunca salió de él: `deploy/certs/origin.key` (600),
   fuera de git.
 
+Para emitir uno nuevo (servidor nuevo o certificado comprometido), en `deploy/certs/`:
+
+```bash
+openssl req -new -newkey rsa:2048 -nodes -keyout origin.key -out origin.csr -subj "/CN=mdmexico.online" && chmod 600 origin.key
+```
+
+En Cloudflare → *SSL/TLS → Origin Server → Create Certificate* → **Use my private key and CSR**,
+pega `origin.csr`, hostnames `mdmexico.online` y `*.mdmexico.online`, y guarda el certificado PEM
+como `origin.pem`. Comprueba que son pareja (los hashes deben coincidir):
+
+```bash
+openssl x509 -noout -pubkey -in origin.pem | sha256sum && openssl pkey -pubout -in origin.key | sha256sum
+```
+
+Después `sudo docker compose restart nginx` y revoca el certificado anterior en la misma pantalla.
+
 ## Security Group
 
 | Puerto | Origen |
 |---|---|
 | 443 | Lista de prefijos administrada con los rangos IPv4 de Cloudflare |
-| 22 | Administración |
-| 80 | Sin regla |
+| 22 | Solo Ip Asignada |
+| 80 | Todo el trafico es bloqueado |
+
+La lista de prefijos se crea en la consola de AWS → *VPC* → *Managed prefix lists* →
+*Create prefix list*: nombre `cloudflare-ipv4`, familia IPv4, máximo 20 entradas y un CIDR por
+cada línea de [cloudflare.com/ips-v4](https://www.cloudflare.com/ips-v4). En la regla de 443 del
+Security Group, el origen es el ID de esa lista (`pl-...`).
 
 Los rangos de Cloudflare cambian muy rara vez ([cloudflare.com/ips](https://www.cloudflare.com/ips/)).
 Si cambian, hay que actualizar la lista de prefijos **y** `deploy/nginx/conf.d/00-common.conf`.
@@ -105,4 +126,4 @@ sudo docker compose restart nginx
 ## CORS
 
 La API solo acepta peticiones del navegador desde los orígenes de `CORS_ALLOWED_ORIGINS`
-(`https://mdmexico.online`). Ver [Variables de entorno](/deploy/configuracion/variables/).
+(`https://mdmexico.online`). Ver [Variables de entorno](/deploy/configuration/variables/).

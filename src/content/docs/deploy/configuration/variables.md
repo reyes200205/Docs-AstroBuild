@@ -24,7 +24,7 @@ comentarios en su propia línea, nunca al final de un valor.
 |---|---|---|
 | `DB_DATABASE` | `md` | |
 | `DB_USERNAME` | `md` | Usuario de la app, sin privilegios globales |
-| `DB_PASSWORD` | secreto | Solo se lee al crear el volumen ([ver](/deploy/infraestructura/base-de-datos/#usuarios)) |
+| `DB_PASSWORD` | secreto | Solo se lee al crear el volumen ([ver](/deploy/infrastructure/database/#usuarios)) |
 | `DB_ROOT_PASSWORD` | secreto | Lo usa solo el contenedor `mysql`; la API lo recibe vacío |
 
 `DB_HOST`, `DB_PORT` y `DB_CONNECTION` los fija el compose; no van en el `.env`.
@@ -33,9 +33,10 @@ comentarios en su propia línea, nunca al final de un valor.
 
 | Variable | Valor en producción | Notas |
 |---|---|---|
+| `APP_NAME` | `Master-Drilling` | |
 | `APP_ENV` | `production` | |
 | `APP_DEBUG` | `false` | **Nunca `true`**: mostraría trazas y configuración en los errores |
-| `APP_KEY` | secreto | `sudo docker compose run --rm api php artisan key:generate --show`. Cambiarlo invalida todo lo cifrado |
+| `APP_KEY` | secreto | `sudo docker compose run --rm api php artisan key:generate --show`. Cambiarlo invalida todo lo cifrado: en una recuperación se reutiliza el del servidor anterior, nunca se genera otro |
 | `APP_URL` | `https://api.mdmexico.online` | |
 | `FRONTEND_URL` | `https://mdmexico.online` | Enlaces en correos y notificaciones |
 | `CORS_ALLOWED_ORIGINS` | `https://mdmexico.online` | Separados por coma |
@@ -43,7 +44,9 @@ comentarios en su propia línea, nunca al final de un valor.
 | `APP_LOCALE` / `APP_FALLBACK_LOCALE` | `es` / `en` | |
 | `LOG_CHANNEL` | `stderr` | Los logs se ven con `docker compose logs` |
 | `LOG_LEVEL` | `warning` | |
+| `BCRYPT_ROUNDS` | `12` | Costo del hash de contraseñas |
 | `SESSION_DRIVER`, `CACHE_STORE`, `QUEUE_CONNECTION` | `database` | Sin Redis |
+| `SESSION_LIFETIME` | `120` | Minutos |
 | `BROADCAST_CONNECTION` | `log` | Sin WebSockets; las notificaciones van por REST y push |
 
 ## Archivos (S3)
@@ -56,7 +59,7 @@ comentarios en su propia línea, nunca al final de un valor.
 | `AWS_USE_PATH_STYLE_ENDPOINT` | `false` |
 
 Permisos que necesita el usuario IAM: los de los archivos de la app y, para los respaldos,
-listar y borrar en `backups/` ([Respaldos](/deploy/operacion/respaldos/#permisos-de-aws)).
+listar y borrar en `backups/` ([Respaldos](/deploy/operations/backups/#permisos-de-aws)).
 
 ## Respaldos
 
@@ -82,6 +85,23 @@ listar y borrar en `backups/` ([Respaldos](/deploy/operacion/respaldos/#permisos
 
 Genera cada token con `openssl rand -hex 32`.
 
+## Power BI
+
+| Variable | Notas |
+|---|---|
+| `POWERBI_TOKEN` | Token (`X-Api-Key`) con el que Power BI lee `GET /api/v1/internal/powerbi/*` (empleados, solicitudes de RH, saldos de vacaciones). Vacío = deshabilitado (503) |
+
+Genéralo con `openssl rand -hex 32`.
+
+## Cloudflare Turnstile (buzón público `/ideas`)
+
+| Variable | Dónde | Notas |
+|---|---|---|
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | `.env` del servidor | La usa Laravel para validar el token. **Sin ella, en producción se rechazan todos los envíos de `/ideas`** |
+| `TURNSTILE_SITE_KEY` | GitHub → repo → *Settings → Secrets and variables → Actions → Variables* | Pública. Se embebe en el frontend **al compilar** `web`; en el `.env` del servidor solo sirve si se construyera la imagen a mano |
+
+Ambas salen de Cloudflare → *Turnstile* → el widget del sitio.
+
 ## Correo
 
 | Variable | Valor actual |
@@ -103,7 +123,7 @@ Genera cada token con `openssl rand -hex 32`.
 
 | Variable | Notas |
 |---|---|
-| `IMAGE_TAG` | **Normalmente no existe.** Solo durante un [rollback](/deploy/operacion/rollback/): fija las imágenes a un SHA |
+| `IMAGE_TAG` | **Normalmente no existe.** Solo durante un [rollback](/deploy/operations/rollback/): fija las imágenes a un SHA |
 
 ## Configuración que no está en el .env
 
@@ -124,6 +144,7 @@ Algunos valores se cambian desde la app, sin tocar el servidor, y se guardan en 
 | Llave de solo lectura del repo | `~/.ssh/md_repo` del usuario `ubuntu` | No |
 | Token de lectura de GHCR | Credenciales de Docker de root en el servidor | No |
 | `NUXT_PUBLIC_API_URL` | Build arg en el workflow (es pública, termina en el JS) | Sí |
+| `TURNSTILE_SITE_KEY` | Variable de GitHub Actions (es pública, termina en el JS) | No, en la configuración del repo |
 
 Los secretos de la app **nunca pasan por GitHub Actions**: el pipeline no los conoce, así que no
 puede filtrarlos.

@@ -61,7 +61,7 @@ Procedimiento **manual** mientras no exista el job de despliegue en GitHub Actio
 
    Si falla, producción sigue sirviendo la versión anterior. `Nothing to migrate` es normal si no
    hay migraciones nuevas. Antes de una migración destructiva lee
-   [Migraciones](/deploy/operacion/migraciones/).
+   [Migraciones](/deploy/operations/migrations/).
 
 6. **Aplicar**:
 
@@ -118,7 +118,7 @@ sudo docker image inspect ghcr.io/reyes200205/md-api:latest --format '{{.Created
 | Código del frontend | Pasos 1–4, 6 y 7 |
 | Migraciones nuevas | Paso 5 obligatorio; respaldo antes si es destructiva |
 | `deploy/docker-compose.yml` | Pasos 1, 3 y `sudo docker compose up -d` |
-| Configuración de nginx | Pasos 1 y 3, luego [probar y reiniciar nginx](/deploy/infraestructura/red-y-tls/#cambiar-la-configuración-de-nginx) |
+| Configuración de nginx | Pasos 1 y 3, luego [probar y reiniciar nginx](/deploy/infrastructure/network-and-tls/#cambiar-la-configuración-de-nginx) |
 | `deploy/mysql/prod.cnf` | Pasos 1 y 3, luego `sudo docker compose restart mysql` (corte breve) |
 | Variable nueva en el `.env` | `nano .env` en el servidor y `sudo docker compose up -d --force-recreate api queue scheduler` |
 | Dependencias (Composer, pnpm) | Nada extra: van dentro de la imagen |
@@ -132,5 +132,5 @@ sudo docker image inspect ghcr.io/reyes200205/md-api:latest --format '{{.Created
 - **El build falla**: producción no se tocó. Corrige y repite.
 - **La migración falla**: la app sigue con la versión anterior porque no se ejecutó `up -d`.
   Corrige la migración y repite desde el paso 1.
-- **La versión nueva rompe algo**: [Rollback](/deploy/operacion/rollback/).
-- **Cualquier otra cosa**: [Diagnóstico](/deploy/operacion/diagnostico/).
+- **La versión nueva rompe algo**: [Rollback](/deploy/operations/rollback/).
+- **Cualquier otra cosa**: [Diagnóstico](/deploy/operations/troubleshooting/).

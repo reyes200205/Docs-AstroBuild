@@ -10,12 +10,12 @@ Es independiente del compose de desarrollo de la raíz del repo.
 
 | Servicio | Imagen | Puerto al host | Límite RAM | Qué hace |
 |---|---|---|---|---|
-| `mysql` | `mysql:8.4` | — | 640 MB | Base de datos ([Base de datos](/deploy/infraestructura/base-de-datos/)) |
+| `mysql` | `mysql:8.4` | — | 640 MB | Base de datos ([Base de datos](/deploy/infrastructure/database/)) |
 | `api` | `ghcr.io/reyes200205/md-api` | — | 448 MB | Laravel en PHP-FPM 8.4 con OPcache |
 | `queue` | misma que `api` | — | 192 MB | `php artisan queue:work --sleep=3 --tries=3 --max-time=3600` |
-| `scheduler` | misma que `api` | — | 192 MB | `php artisan schedule:work` ([Tareas programadas](/deploy/operacion/tareas-programadas/)) |
+| `scheduler` | misma que `api` | — | 192 MB | `php artisan schedule:work` ([Tareas programadas](/deploy/operations/scheduled-tasks/)) |
 | `web` | `ghcr.io/reyes200205/md-web` | — | 160 MB | Nuxt servido por Nitro (Node 22) |
-| `nginx` | `nginx:stable-alpine` | **443** | 64 MB | Único punto de entrada ([Red y TLS](/deploy/infraestructura/red-y-tls/)) |
+| `nginx` | `nginx:stable-alpine` | **443** | 64 MB | Único punto de entrada ([Red y TLS](/deploy/infrastructure/network-and-tls/)) |
 
 Todos con `restart: unless-stopped`. `api`, `queue` y `scheduler` comparten un bloque común
 (`x-api`): misma imagen, mismo `.env`, mismos volúmenes; solo cambia el comando.
@@ -35,7 +35,7 @@ Todos con `restart: unless-stopped`. `api`, `queue` y `scheduler` comparten un b
 
 Las construye `.github/workflows/build-images.yml` en cada push a `main` (o a mano con *Run
 workflow*). El compose usa `${IMAGE_TAG:-latest}`: sin `IMAGE_TAG` toma `latest`, y fijar un SHA es
-el mecanismo de [Rollback](/deploy/operacion/rollback/).
+el mecanismo de [Rollback](/deploy/operations/rollback/).
 
 **`md-api`**: código y dependencias de Composer horneados en la imagen, OPcache con
 `validate_timestamps=Off` y la configuración de PHP de producción. El `.env` **no** va en la
@@ -110,6 +110,11 @@ La huella de la llave debe ser `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD8
 
 - **Rotación de logs**: como máximo 30 MB por contenedor; los logs no llenan el disco.
 - **`live-restore`**: los contenedores siguen corriendo si el daemon de Docker se reinicia.
+
+Después de crearlo o cambiarlo: `sudo systemctl restart docker` y comprueba con
+`sudo docker info --format '{{.LoggingDriver}} live-restore={{.LiveRestoreEnabled}}'`
+(debe mostrar `json-file live-restore=true`). La rotación solo aplica a contenedores creados
+después del cambio.
 
 Docker se actualiza **a mano** (`apt-get install --only-upgrade docker-ce ...`), en un momento
 tranquilo, porque reinicia el daemon.

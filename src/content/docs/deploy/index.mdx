@@ -12,7 +12,7 @@ las publica en **GHCR** y el servidor solo las descarga y las ejecuta.
 ## Arquitectura
 
 Esta imagen es solo para fines ilustrativos y no representa la arquitectura real de producción.
-![Diagrama de Arquitectura de Infraestructura](../../../assets/infrestructure.png)
+![Diagrama de Arquitectura de Infraestructura](../../../assets/infrastructure.png)
 
 
 ## Cómo llega un cambio a producción
@@ -27,12 +27,12 @@ Servidor      ▼  git pull → docker compose pull → migrate → docker compo
 ```
 
 - **Imágenes inmutables por commit.** Cada build publica `md-api:<sha>` y `md-web:<sha>`. Volver a
-  una versión anterior es fijar su SHA ([Rollback](/deploy/operacion/rollback/)).
+  una versión anterior es fijar su SHA ([Rollback](/deploy/operations/rollback/)).
 - **La configuración viaja por git y los secretos no.** El servidor tiene un clon del repo
   (solo lectura) del que toma el `docker-compose.yml` y las configuraciones de nginx y MySQL. El
   `.env`, los certificados y las credenciales viven solo en el servidor.
 - **Hoy el despliegue en el servidor es manual.** El job de GitHub Actions que lo automatiza está
-  pendiente ([Estado y pendientes](/deploy/pendientes/)).
+  pendiente ([Estado y pendientes](/deploy/status/)).
 
 ## Dónde vive cada cosa
 
@@ -68,7 +68,7 @@ Servidor      ▼  git pull → docker compose pull → migrate → docker compo
 | Base de datos | Volumen Docker `md_mysql_data` |
 | Disco `public` de Laravel | Volumen Docker `md_api_storage` |
 | Archivos de usuario (fotos, documentos) | Bucket de AWS S3 |
-| Respaldos de la base | Bucket de AWS S3, carpeta `backups/` ([Respaldos](/deploy/operacion/respaldos/)) |
+| Respaldos de la base | Bucket de AWS S3, carpeta `backups/` ([Respaldos](/deploy/operations/backups/)) |
 
 ## Decisiones de diseño
 
@@ -89,4 +89,4 @@ Servidor      ▼  git pull → docker compose pull → migrate → docker compo
 - **Cloudflare corta las peticiones a los 100 s.** Una exportación más lenta devuelve 524 aunque
   PHP siga trabajando.
 - **Un servidor es un punto único de falla.** Los respaldos van fuera del servidor (S3) y el stack
-  se puede montar en otro servidor con [Montar el servidor desde cero](/deploy/instalacion/).
+  se puede montar en otro servidor con [Montar el servidor desde cero](/deploy/installation/).

@@ -12,7 +12,7 @@ Power Automate).
 | Tarea | Comando | Hora por defecto | Qué hace |
 |---|---|---|---|
 | Renovación de vacaciones | `vacations:renew` | 01:00 diario | Abre el ciclo nuevo de quien cumple aniversario y aplica la prescripción. Es seguro repetirla el mismo día |
-| Respaldo de la base de datos | `md:backup-database` | 02:00 diario | [Respaldos](/deploy/operacion/respaldos/) |
+| Respaldo de la base de datos | `md:backup-database` | 02:00 diario | [Respaldos](/deploy/operations/backups/) |
 | Limpieza de registros vencidos | `md:prune-expired` | 03:00 diario | Borra códigos de un solo uso vencidos, tokens expirados y vinculaciones de kiosko abandonadas |
 
 Las horas son de `APP_TIMEZONE` (Monterrey), no UTC.

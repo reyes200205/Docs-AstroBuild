@@ -13,7 +13,6 @@ puertos**: solo `api`, `queue` y `scheduler` llegan a él por la red interna de 
 | `root` | Todos | Solo administración manual |
 | `md` | `ALL PRIVILEGES ON md.*` y nada más | La aplicación |
 
-Las contraseñas están en `deploy/.env` (`DB_PASSWORD`, `DB_ROOT_PASSWORD`).
 
 :::caution[Las contraseñas solo se leen una vez]
 MySQL toma las contraseñas del `.env` **solo la primera vez que crea el volumen**. Cambiarlas
@@ -73,5 +72,5 @@ Conéctate a `127.0.0.1:3307` con el usuario `md`. El puerto nunca queda expuest
 El primer administrador se crea con `php artisan md:create-super-admin`, que pide nombre, correo,
 contraseña (oculta) y módulos.
 
-Respaldos y restauración: [Respaldos](/deploy/operacion/respaldos/). Cambios de esquema:
-[Migraciones](/deploy/operacion/migraciones/).
+Respaldos y restauración: [Respaldos](/deploy/operations/backups/). Cambios de esquema:
+[Migraciones](/deploy/operations/migrations/).

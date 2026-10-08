@@ -1,0 +1,603 @@
+---
+title: Montar el servidor desde cero
+description: Guía completa para levantar producción en un servidor nuevo, desde la instancia de AWS hasta el primer inicio de sesión.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Sirve para dos casos: **reconstruir producción** si el servidor se pierde y **mover el stack** a
+otro servidor. Está escrita para seguirse de arriba abajo sin saltar a otras páginas; los enlaces
+explican el porqué de cada decisión.
+
+Hay dos caminos y la guía marca dónde se separan:
+
+| Camino | Cuándo |
+|---|---|
+| **Instalación nueva** | No hay datos que conservar (base vacía, primer administrador nuevo) |
+| **Recuperación** | Hay que conservar los datos: se restaura el último respaldo de S3 |
+
+:::note[Antes de empezar]
+Necesitas:
+
+- Acceso a la consola de **AWS** y de **Cloudflare** (zona `mdmexico.online`).
+- Acceso de administrador al repo `reyes200205/master-drilling-release` en **GitHub**.
+- Los secretos del `.env` (contraseñas de MySQL, llaves de AWS, Firebase, IA, tokens).
+- **En una recuperación:** el `APP_KEY` del servidor anterior y el último respaldo de
+  `backups/` en S3. Sin el `APP_KEY` original, lo cifrado en la base no se puede leer.
+:::
+
+:::caution[Tiempo y orden]
+Calcula unas 2 horas. El orden importa: el Security Group (paso 1.4) debe existir **antes** de
+levantar nginx, porque Docker se salta UFW y el 443 quedaría abierto a todo internet.
+:::
+
+## 1. AWS
+
+<Steps>
+
+1. **Instancia EC2**: t3.small, Ubuntu Server 24.04 LTS (x86_64), volumen EBS **gp3 de 30 GiB**
+   (la imagen de `api` pesa ~1.1 GB y se guardan varias versiones para el rollback). Asígnale tu
+   par de llaves SSH.
+
+2. **Elastic IP** asociada a la instancia. Sin ella, la IP pública cambia al detener e iniciar la
+   instancia y Cloudflare deja de llegar.
+
+   Si mueves el stack a otro servidor, **reasocia la Elastic IP existente** a la instancia nueva:
+   así no hay que tocar el DNS.
+
+3. **Lista de prefijos de Cloudflare.** Consola de AWS → *VPC* → *Managed prefix lists* →
+   *Create prefix list*:
+
+   | Campo | Valor |
+   |---|---|
+   | Name | `cloudflare-ipv4` |
+   | Max entries | `20` |
+   | Address family | `IPv4` |
+   | Entries | Un CIDR por cada línea de [cloudflare.com/ips-v4](https://www.cloudflare.com/ips-v4) |
+
+   Son los mismos rangos IPv4 que `set_real_ip_from` en `deploy/nginx/conf.d/00-common.conf`.
+
+4. **Security Group** de la instancia, reglas de entrada:
+
+   | Tipo | Puerto | Origen |
+   |---|---|---|
+   | HTTPS | 443 | La lista de prefijos `cloudflare-ipv4` (`pl-...`) |
+   | SSH | 22 | Tu IP o la de administración |
+
+   **Sin** regla para el 80 y **sin** ninguna regla de 443 hacia `0.0.0.0/0`. Ver
+   [Red y TLS](/deploy/infrastructure/network-and-tls/#security-group).
+
+5. **Bucket de S3 y usuario IAM** (solo si es una cuenta de AWS nueva o el bucket no existe; en
+   una recuperación normal se reutilizan los de siempre):
+
+   - Bucket en la misma región que la instancia, con **Block all public access** encendido.
+   - Usuario IAM para la app (sin acceso a la consola), con esta política en línea (cambia
+     `NOMBRE-BUCKET`):
+
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": "s3:ListBucket",
+           "Resource": "arn:aws:s3:::NOMBRE-BUCKET"
+         },
+         {
+           "Effect": "Allow",
+           "Action": ["s3:GetObject", "s3:PutObject", "s3:PutObjectAcl", "s3:DeleteObject"],
+           "Resource": "arn:aws:s3:::NOMBRE-BUCKET/*"
+         }
+       ]
+     }
+     ```
+
+   - Crea una *access key* para ese usuario: va en `AWS_ACCESS_KEY_ID` y
+     `AWS_SECRET_ACCESS_KEY` del `.env`.
+
+   Cubre los archivos de la app y los [respaldos](/deploy/operations/backups/#permisos-de-aws)
+   (listar y borrar en `backups/`).
+
+</Steps>
+
+## 2. Sistema operativo
+
+Todo por SSH como `ubuntu`:
+
+```bash
+ssh -i <tu-llave>.pem ubuntu@<elastic-ip>
+```
+
+El detalle de cada archivo está en [Servidor](/deploy/infrastructure/server/).
+
+<Steps>
+
+1. **Actualizar** y reiniciar si hay kernel nuevo:
+
+   ```bash
+   sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
+   ```
+
+   ```bash
+   [ -f /var/run/reboot-required ] && sudo reboot
+   ```
+
+   Si reinició, vuelve a entrar por SSH. El host se queda en **UTC** (lo trae así la imagen de
+   AWS; compruébalo con `timedatectl`).
+
+2. **Usuario `deploy`** (reservado para el futuro despliegue automático), sin contraseña ni `sudo`.
+   Va antes de endurecer SSH porque `AllowUsers` lo menciona:
+
+   ```bash
+   sudo adduser --disabled-password --gecos "" deploy && sudo deluser deploy users
+   ```
+
+3. **Endurecer SSH**:
+
+   ```bash
+   sudo tee /etc/ssh/sshd_config.d/00-hardening.conf > /dev/null <<'EOF'
+   PermitRootLogin no
+   PasswordAuthentication no
+   KbdInteractiveAuthentication no
+   PubkeyAuthentication yes
+   AllowUsers ubuntu deploy
+   MaxAuthTries 3
+   LoginGraceTime 30
+   X11Forwarding no
+   AllowAgentForwarding no
+   ClientAliveInterval 300
+   ClientAliveCountMax 2
+   LogLevel VERBOSE
+   EOF
+   ```
+
+   ```bash
+   sudo sshd -T | grep -E 'permitrootlogin|passwordauthentication|allowusers'
+   ```
+
+   Debe mostrar `permitrootlogin no`, `passwordauthentication no` y `allowusers ubuntu deploy`.
+   Entonces:
+
+   ```bash
+   sudo systemctl reload ssh
+   ```
+
+   :::caution
+   **No cierres esta sesión.** Abre una segunda terminal y comprueba que entras. Si no entras,
+   corrige desde la sesión que sigue abierta.
+   :::
+
+4. **Firewall (UFW)**:
+
+   ```bash
+   sudo ufw default deny incoming && sudo ufw default allow outgoing
+   ```
+
+   ```bash
+   sudo ufw allow 22/tcp comment 'SSH' && sudo ufw allow 443/tcp comment 'HTTPS desde Cloudflare'
+   ```
+
+   ```bash
+   sudo ufw enable && sudo ufw status verbose
+   ```
+
+5. **fail2ban** para SSH:
+
+   ```bash
+   sudo apt-get install -y fail2ban
+   ```
+
+   ```bash
+   sudo tee /etc/fail2ban/jail.d/sshd.local > /dev/null <<'EOF'
+   [sshd]
+   enabled  = true
+   backend  = systemd
+   maxretry = 5
+   findtime = 10m
+   bantime  = 1h
+   EOF
+   ```
+
+   ```bash
+   sudo systemctl restart fail2ban && sudo fail2ban-client status sshd
+   ```
+
+6. **Parches automáticos.** `unattended-upgrades` ya viene activo en la imagen de Ubuntu; solo se
+   ajusta el reinicio y la limpieza:
+
+   ```bash
+   sudo tee /etc/apt/apt.conf.d/52unattended-upgrades-local > /dev/null <<'EOF'
+   Unattended-Upgrade::Automatic-Reboot "true";
+   Unattended-Upgrade::Automatic-Reboot-Time "09:00";
+   Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+   Unattended-Upgrade::Remove-Unused-Dependencies "true";
+   EOF
+   ```
+
+   ```bash
+   sudo unattended-upgrade --dry-run && apt-config dump | grep -E 'Automatic-Reboot'
+   ```
+
+   Reinicia **solo si un parche lo requiere**, a las 09:00 UTC (03:00 Monterrey). Docker no se
+   actualiza solo: su repositorio no está entre los orígenes permitidos.
+
+7. **Swap** de 2 GB:
+
+   ```bash
+   sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+   sudo mkswap /swapfile && sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf
+   sudo sysctl -p /etc/sysctl.d/99-swappiness.conf
+   ```
+
+   ```bash
+   free -h
+   ```
+
+   Debe mostrar `Swap: 2.0Gi`.
+
+8. **Atajo** (opcional):
+
+   ```bash
+   echo "alias dc='sudo docker compose'" >> ~/.bashrc && source ~/.bashrc
+   ```
+
+</Steps>
+
+## 3. Docker
+
+Desde el repositorio oficial de Docker, nunca `snap` ni `docker.io`. El porqué está en
+[Contenedores](/deploy/infrastructure/containers/#instalación-de-docker).
+
+<Steps>
+
+1. **Repositorio y llave**:
+
+   ```bash
+   sudo apt-get update && sudo apt-get install -y ca-certificates curl
+   sudo install -m 0755 -d /etc/apt/keyrings
+   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+   sudo chmod a+r /etc/apt/keyrings/docker.asc
+   ```
+
+   ```bash
+   sudo gpg --show-keys --with-fingerprint /etc/apt/keyrings/docker.asc
+   ```
+
+   La huella debe ser `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88`. Si no coincide,
+   **detente**.
+
+2. **Instalar**:
+
+   ```bash
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   ```
+
+   ```bash
+   sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+   ```
+
+3. **Rotación de logs y `live-restore`**:
+
+   ```bash
+   sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+   {
+     "log-driver": "json-file",
+     "log-opts": { "max-size": "10m", "max-file": "3" },
+     "live-restore": true
+   }
+   EOF
+   ```
+
+   ```bash
+   sudo systemctl restart docker
+   ```
+
+4. **Verificar**:
+
+   ```bash
+   sudo docker info --format '{{.LoggingDriver}} live-restore={{.LiveRestoreEnabled}}'
+   ```
+
+   Debe mostrar `json-file live-restore=true`.
+
+   ```bash
+   sudo docker run --rm hello-world && sudo docker image rm hello-world
+   ```
+
+</Steps>
+
+:::caution
+No agregues a `ubuntu` al grupo `docker`: equivale a darle root sin contraseña. Todos los comandos
+llevan `sudo`, **cada uno el suyo**.
+:::
+
+## 4. El proyecto
+
+<Steps>
+
+1. **Llave de solo lectura** para clonar el repo privado:
+
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/md_repo -N "" -C "md-server-readonly"
+   ```
+
+   ```bash
+   cat ~/.ssh/md_repo.pub
+   ```
+
+   Agrégala en GitHub → repo → *Settings → Deploy keys → Add deploy key*, **sin** *Allow write
+   access*. Si el servidor anterior ya no existe, borra su deploy key vieja. Después:
+
+   ```bash
+   printf 'Host github.com\n  IdentityFile ~/.ssh/md_repo\n  IdentitiesOnly yes\n' >> ~/.ssh/config && chmod 600 ~/.ssh/config
+   ```
+
+   ```bash
+   ssh-keyscan -t ed25519 github.com | tee -a ~/.ssh/known_hosts | ssh-keygen -lf -
+   ```
+
+   La huella debe ser `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU` (la publicada por
+   GitHub). Luego:
+
+   ```bash
+   ssh -T git@github.com
+   ```
+
+   Responde `Hi reyes200205/master-drilling-release! You've successfully authenticated...`.
+
+2. **Clonar** en `/opt/md`:
+
+   ```bash
+   sudo mkdir /opt/md && sudo chown ubuntu:ubuntu /opt/md
+   ```
+
+   ```bash
+   git clone git@github.com:reyes200205/master-drilling-release.git /opt/md && cd /opt/md/deploy
+   ```
+
+   **Desde aquí, todos los comandos se ejecutan en `/opt/md/deploy`.**
+
+3. **`.env`** a partir de la plantilla:
+
+   ```bash
+   cp .env.example .env && chmod 600 .env && nano .env
+   ```
+
+   Rellena todo **excepto `APP_KEY`** (va en el paso 5.3). Cada variable está explicada en
+   [Variables de entorno](/deploy/configuration/variables/). Lo mínimo para arrancar:
+
+   | Variable | Valor |
+   |---|---|
+   | `DB_PASSWORD`, `DB_ROOT_PASSWORD` | Solo letras y números. En una recuperación pueden ser nuevas: el respaldo no incluye los usuarios de MySQL |
+   | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET` | Las del paso 1.5 |
+   | `CLOUDFLARE_TURNSTILE_SECRET_KEY` | Sin ella se rechazan todos los envíos del buzón público `/ideas` |
+   | `GROQ_API_KEY` | Asistente de IA |
+
+   :::caution[MySQL solo lee las contraseñas una vez]
+   Se toman al crear el volumen en el paso 5.1. Escríbelas bien **antes** de ese paso; cambiarlas
+   después exige `ALTER USER` dentro de MySQL.
+   :::
+
+4. **Certificado Origin CA.** La llave se genera **en el servidor** y nunca sale de él:
+
+   ```bash
+   mkdir -p certs && cd certs
+   ```
+
+   ```bash
+   openssl req -new -newkey rsa:2048 -nodes -keyout origin.key -out origin.csr -subj "/CN=mdmexico.online" && chmod 600 origin.key
+   ```
+
+   ```bash
+   cat origin.csr
+   ```
+
+   En Cloudflare → *SSL/TLS → Origin Server → Create Certificate*:
+
+   - **Use my private key and CSR** y pega el contenido de `origin.csr`.
+   - Hostnames: `mdmexico.online` y `*.mdmexico.online`.
+   - Validez: 15 años.
+
+   Copia el certificado (formato PEM) a `origin.pem`:
+
+   ```bash
+   nano origin.pem
+   ```
+
+   Comprueba que certificado y llave son pareja (los dos hashes deben ser iguales) y vuelve a
+   `deploy/`:
+
+   ```bash
+   openssl x509 -noout -pubkey -in origin.pem | sha256sum && openssl pkey -pubout -in origin.key | sha256sum
+   ```
+
+   ```bash
+   rm origin.csr && cd ..
+   ```
+
+   :::tip
+   Si sigue vigente el certificado del servidor anterior y tienes su `origin.key`, puedes copiar
+   ambos archivos en lugar de emitir uno nuevo. Si el servidor viejo se perdió, revoca su
+   certificado en la misma pantalla de Cloudflare.
+   :::
+
+5. **Acceso a GHCR** (las imágenes son privadas). En GitHub → *Settings → Developer settings →
+   Personal access tokens → Tokens (classic)*, crea uno con **solo** `read:packages` y vencimiento
+   de 1 año. Login sin que quede en el historial:
+
+   ```bash
+   read -rs GHCR_TOKEN && echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u reyes200205 --password-stdin; unset GHCR_TOKEN
+   ```
+
+   Anota el vencimiento en [Estado y pendientes](/deploy/status/#con-fecha-de-vencimiento).
+
+6. **Firebase** (opcional): copia el JSON de la cuenta de servicio a
+   `deploy/secrets/firebase-credentials.json`. Sin él, el push queda apagado sin errores.
+
+   ```bash
+   mkdir -p secrets && nano secrets/firebase-credentials.json && chmod 644 secrets/firebase-credentials.json
+   ```
+
+   Los contenedores corren como `www-data`: el archivo debe poder leerse.
+
+</Steps>
+
+## 5. Levantar el stack
+
+<Steps>
+
+1. **Validar el compose y arrancar la base**:
+
+   ```bash
+   sudo docker compose config --quiet && sudo docker compose up -d mysql
+   ```
+
+   Si `config` se queja de `define DB_...`, falta esa variable en el `.env`. Espera a que esté
+   `healthy` (unos 40 s la primera vez):
+
+   ```bash
+   sudo docker compose ps mysql
+   ```
+
+2. **Descargar las imágenes de la app**:
+
+   ```bash
+   sudo docker compose pull api web
+   ```
+
+   Si responde `unauthorized`, revisa el login del paso 4.5. Si responde `manifest unknown`, no
+   hay imágenes publicadas: lanza el workflow en GitHub → *Actions → Build and publish images →
+   Run workflow* y espera a que termine en verde.
+
+3. **`APP_KEY`**. Aquí se separan los caminos:
+
+   - **Instalación nueva:** genera una y pégala en el `.env`.
+
+     ```bash
+     sudo docker compose run --rm api php artisan key:generate --show
+     ```
+
+     Copia la salida completa (empieza por `base64:`) en `APP_KEY=`. **Guárdala en el gestor de
+     contraseñas**: es imprescindible para recuperar el servidor en el futuro.
+
+   - **Recuperación:** **no generes una nueva.** Pega en `APP_KEY=` la del servidor anterior.
+
+   ```bash
+   nano .env
+   ```
+
+4. **Base de datos**. Elige una opción:
+
+   - **Instalación nueva:** migraciones y catálogos base.
+
+     ```bash
+     sudo docker compose run --rm api php artisan migrate --force --seeder='Database\Seeders\ProductionSeeder' --seed
+     ```
+
+   - **Recuperación:** descarga el último `backups/md-AAAA-MM-DD_HHMMSS.sql.gz` de la consola de
+     S3, súbelo desde tu PC (`scp md-....sql.gz ubuntu@<elastic-ip>:~`) y restáuralo:
+
+     ```bash
+     gunzip -c ~/md-AAAA-MM-DD_HHMMSS.sql.gz | sudo docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" md'
+     ```
+
+     Después aplica las migraciones que el respaldo no tenga:
+
+     ```bash
+     sudo docker compose run --rm api php artisan migrate --force
+     ```
+
+5. **Levantar todo**:
+
+   ```bash
+   sudo docker compose up -d
+   ```
+
+6. **Primer administrador** (solo en una instalación nueva). Pide nombre, correo, contraseña
+   (oculta) y módulos:
+
+   ```bash
+   sudo docker compose exec api php artisan md:create-super-admin
+   ```
+
+   :::danger
+   Nunca ejecutes `php artisan db:seed` a secas en producción: incluye `UsersSeeder`, que crea un
+   super admin con la contraseña `password`.
+   :::
+
+</Steps>
+
+## 6. Cloudflare
+
+<Steps>
+
+1. **DNS**: registros `A` para `mdmexico.online` y `api` apuntando a la Elastic IP, **con proxy**
+   (nube naranja). Si reasociaste la Elastic IP de siempre, ya están bien.
+2. **SSL/TLS → Overview**: modo **Full (strict)**.
+3. **SSL/TLS → Edge Certificates**: *Always Use HTTPS* encendido y *Minimum TLS Version* 1.2.
+
+</Steps>
+
+## 7. Verificar
+
+<Steps>
+
+1. **Contenedores**:
+
+   ```bash
+   sudo docker compose ps
+   ```
+
+   Los 6 servicios (`mysql`, `api`, `queue`, `scheduler`, `web`, `nginx`) en `Up`; `mysql`, `web` y
+   `nginx` en `healthy`.
+
+   ```bash
+   sudo docker compose logs --tail=30 api queue scheduler
+   ```
+
+   Sin `ERROR`, `Exception` ni reinicios en bucle.
+
+2. **API desde el propio servidor**:
+
+   ```bash
+   curl -sk --resolve api.mdmexico.online:443:127.0.0.1 https://api.mdmexico.online/up -o /dev/null -w "%{http_code}\n"
+   ```
+
+   Debe responder `200`.
+
+3. **Desde fuera** (tu PC): `https://api.mdmexico.online/up` responde `200` y
+   `https://mdmexico.online` muestra el login. Inicia sesión con el administrador del paso 5.6 (o
+   con un usuario real, en una recuperación).
+
+4. **El origen no está expuesto** (desde tu PC, debe fallar o agotar el tiempo):
+
+   ```bash
+   curl -vk --max-time 10 https://<elastic-ip>/
+   ```
+
+5. **Tareas programadas**:
+
+   ```bash
+   sudo docker compose exec scheduler php artisan schedule:list
+   ```
+
+   Aparecen las tres como `scheduled-task:<clave>` ([Tareas programadas](/deploy/operations/scheduled-tasks/)).
+
+6. **Respaldo**: Management → Tareas Programadas → *Respaldo de la base de datos* → **Ejecutar**.
+   El detalle debe decir `Respaldo guardado en s3:backups/...`. Si falla, revisa la política IAM
+   del paso 1.5.
+
+7. **Archivos**: sube una foto de perfil y comprueba que se ve. Si falla con
+   `AccessControlListNotSupported`, en el bucket → *Permissions → Object Ownership* activa ACLs
+   (*Bucket owner preferred*).
+
+</Steps>
+
+## 8. Al terminar
+
+- Guarda en el gestor de contraseñas el `.env` completo y el par `origin.pem` / `origin.key`.
+- Actualiza [Estado y pendientes](/deploy/status/): vencimiento del token de GHCR y, si fue la
+  primera vez que se siguió esta guía completa, quítala de *Sin probar*.
+- En una recuperación: borra el respaldo descargado del home (`rm ~/md-*.sql.gz`).

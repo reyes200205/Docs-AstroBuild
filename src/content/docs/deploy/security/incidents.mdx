@@ -1,0 +1,180 @@
+---
+title: Incidentes
+description: Qué hacer si sospechas que el servidor o una cuenta están comprometidos, qué revisar y cómo rotar cada secreto.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Señales que justifican seguir esta página: una huella de llave SSH que no reconoces, un usuario de
+Linux o un contenedor que no creaste, procesos que consumen CPU sin motivo, cambios en la app que
+nadie hizo según Auditorías o un secreto que pudo filtrarse (subido a git, enviado por chat...).
+
+## Primeros pasos
+
+<Steps>
+
+1. **No reinicies ni borres nada todavía.** Reiniciar borra procesos y conexiones que sirven para
+   entender qué pasó.
+
+2. **Haz un snapshot del disco** para poder investigar después: consola de AWS → *EC2* →
+   *Volumes* → el volumen de la instancia → *Actions → Create snapshot*.
+
+3. **Contén**:
+   - Security Group → regla del 22: solo tu IP actual.
+   - Si el problema está en la app: Cloudflare → *Overview* → *Under Attack Mode*, o detén la app
+     mientras investigas:
+
+     ```bash
+     sudo docker compose stop web api queue scheduler
+     ```
+
+4. **Investiga** con la [lista de revisión](#qué-revisar).
+
+5. **Decide**:
+
+   | Situación | Qué hacer |
+   |---|---|
+   | Alguien tuvo acceso al servidor como `ubuntu` o `root` | **No intentes limpiarlo.** Monta un servidor nuevo con [Montar el servidor desde cero](/deploy/installation/) (camino de recuperación), restaura el último respaldo anterior al incidente y [rota todos los secretos](#rotar-secretos) |
+   | Se filtró un secreto concreto, sin acceso al servidor | Rota ese secreto |
+   | Una cuenta de la app fue usada por otra persona | [Cierra sus sesiones](#cerrar-sesiones-de-la-app), cambia su contraseña y revisa Auditorías |
+
+6. **Deja constancia**: qué pasó, cuándo, qué se hizo. Agrega lo pendiente a
+   [Estado y pendientes](/deploy/status/).
+
+</Steps>
+
+## Qué revisar
+
+Accesos, llaves y usuarios: [SSH y accesos](/deploy/security/ssh-and-access/). Además:
+
+Procesos que más consumen:
+
+```bash
+ps auxf --sort=-%cpu | head -n 20
+```
+
+Conexiones salientes establecidas (lo normal: Cloudflare, S3, GitHub, los proveedores de IA, tu SSH):
+
+```bash
+sudo ss -tunp state established
+```
+
+Tareas programadas del sistema (no las de la app):
+
+```bash
+sudo ls -la /etc/cron.d /etc/cron.daily /var/spool/cron/crontabs 2>/dev/null; sudo crontab -l 2>/dev/null; crontab -l 2>/dev/null
+```
+
+```bash
+systemctl list-timers --all --no-pager
+```
+
+Servicios en ejecución (busca nombres que no reconozcas):
+
+```bash
+systemctl list-units --type=service --state=running --no-pager
+```
+
+Archivos de configuración modificados en los últimos 3 días:
+
+```bash
+sudo find /etc /home /root -type f -mtime -3 -not -path "*/.cache/*" 2>/dev/null | head -n 50
+```
+
+Cambios en el clon del repo (no debería haber ninguno, salvo `.env`, `certs/` y `secrets/`, que git ignora):
+
+```bash
+cd /opt/md && git status --short && git log -1 --format='%H %an %ad'
+```
+
+Contenedores e imágenes ajenos al stack:
+
+```bash
+sudo docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' && sudo docker images --format '{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}'
+```
+
+Solo debe haber `mysql`, `nginx:stable-alpine`, `ghcr.io/reyes200205/md-api` y `md-web`.
+
+Usuarios administradores en la app (base de datos):
+
+```bash
+sudo docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" md -e "SELECT u.id, u.email, r.name AS rol FROM users u JOIN model_has_roles m ON m.model_id = u.id JOIN roles r ON r.id = m.role_id WHERE r.name LIKE \"%Admin%\" ORDER BY u.id"'
+```
+
+## Cerrar sesiones de la app
+
+Un usuario concreto: desde la app (su ficha de empleado en RH, o él mismo desde *Sesiones*).
+
+**Todos los usuarios** (cada uno tendrá que iniciar sesión de nuevo, incluida la documentación):
+
+```bash
+sudo docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" md -e "DELETE FROM personal_access_tokens"'
+```
+
+## Rotar secretos
+
+Después de cambiar cualquier valor del `.env`:
+
+```bash
+sudo docker compose up -d --force-recreate api queue scheduler
+```
+
+| Secreto | Cómo rotarlo |
+|---|---|
+| **Contraseña de MySQL de la app** (`DB_PASSWORD`) | `ALTER USER` en la base (abajo), luego el `.env` y recrear `api queue scheduler` |
+| **Contraseña de root de MySQL** (`DB_ROOT_PASSWORD`) | `ALTER USER` para `root` (abajo), luego el `.env` y `sudo docker compose up -d --force-recreate mysql` (corte breve) |
+| **Llaves de AWS** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) | IAM → el usuario de la app → *Security credentials* → crea otra access key, ponla en el `.env`, recrea, prueba subir un archivo, y después **desactiva y borra** la vieja |
+| **`APP_KEY`** | Ver [abajo](#app_key): no se cambia sin más |
+| **Token de GHCR** | GitHub → *Developer settings* → token clásico nuevo con `read:packages`, repite el `docker login ghcr.io` ([instalación, paso 4.5](/deploy/installation/#4-el-proyecto)) y borra el viejo |
+| **Deploy key del repo** | `ssh-keygen` nueva en el servidor, agrégala en GitHub → *Deploy keys* y borra la vieja |
+| **`KIOSK_SYNC_TOKEN`**, **`POWERBI_TOKEN`**, **`KIOSK_ACCESS_KEY`** | `openssl rand -hex 32`, al `.env`, recrea, y actualiza el valor en Power Automate / Power BI |
+| **`GROQ_API_KEY`**, **`GEMINI_API_KEY`** | Crea una nueva en la consola del proveedor, al `.env`, recrea y revoca la vieja |
+| **`CLOUDFLARE_TURNSTILE_SECRET_KEY`** | Cloudflare → *Turnstile* → el widget → *Rotate secret key* |
+| **Cuenta de servicio de Firebase** | Google Cloud → *IAM → Service accounts* → la cuenta → *Keys* → nueva llave JSON a `deploy/secrets/firebase-credentials.json`, recrea y borra la vieja |
+| **Certificado Origin CA** | [Red y TLS](/deploy/infrastructure/network-and-tls/#certificado-de-origen) |
+| **Llave SSH de un administrador** | Quita su línea de `~/.ssh/authorized_keys` ([SSH y accesos](/deploy/security/ssh-and-access/#llaves-autorizadas)) |
+
+### Contraseñas de MySQL
+
+Solo letras y números. Para el usuario de la app:
+
+```bash
+sudo docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "ALTER USER '"'"'md'"'"'@'"'"'%'"'"' IDENTIFIED BY '"'"'<nueva>'"'"'"'
+```
+
+Para root (la imagen de MySQL crea `root@%` y `root@localhost`):
+
+```bash
+sudo docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "ALTER USER '"'"'root'"'"'@'"'"'%'"'"' IDENTIFIED BY '"'"'<nueva>'"'"'; ALTER USER '"'"'root'"'"'@'"'"'localhost'"'"' IDENTIFIED BY '"'"'<nueva>'"'"'"'
+```
+
+Si las comillas te dan problemas, entra a la consola y escríbelo ahí:
+
+```bash
+sudo docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'
+```
+
+```sql
+ALTER USER 'md'@'%' IDENTIFIED BY '<nueva>';
+```
+
+Después actualiza el `.env` con el mismo valor y recrea los contenedores como dice la tabla.
+
+### APP_KEY
+
+Cifra datos guardados en la base. Si la cambias sin más, **esos datos dejan de poder leerse**.
+Laravel permite rotarla conservando la anterior para descifrar:
+
+1. Genera una nueva: `sudo docker compose run --rm api php artisan key:generate --show`.
+2. En el `.env`, pasa la actual a `APP_PREVIOUS_KEYS` y pon la nueva en `APP_KEY`:
+
+   ```text
+   APP_KEY=base64:<nueva>
+   APP_PREVIOUS_KEYS=base64:<anterior>
+   ```
+
+3. Recrea `api queue scheduler`.
+
+Lo nuevo se cifra con la clave nueva y lo viejo se sigue leyendo con la anterior. **No quites
+`APP_PREVIOUS_KEYS`** mientras haya datos cifrados con ella. Guarda las dos en el gestor de
+contraseñas.

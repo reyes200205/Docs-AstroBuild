@@ -45,6 +45,8 @@ El código se escribe una vez, pero se lee, refactoriza y mantiene docenas de ve
 - **Commits semánticos**: Formato convencional (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`) para trazabilidad clara en el historial del repositorio.
 - **Revisiones de código (Pull Requests)**: Criterios de aceptación antes de fusionar código a las ramas principales.
 
+El detalle está en [Flujo de Git](/development/git-workflow/), [Pull requests](/development/pull-requests/) y [Calidad del código](/development/code-quality/).
+
 ### 4. Seguridad y manejo de variables de entorno
 - Ningún secreto, credencial de API, llave S3 o token de base de datos debe ser versionado en Git.
 - Uso riguroso de archivos `.env.example` sincronizados con cualquier nueva variable requerida por el sistema.
@@ -56,7 +58,7 @@ El código se escribe una vez, pero se lee, refactoriza y mantiene docenas de ve
 | Aspecto | Backend (`laravel-api-kit`) | Frontend (`nuxt-app-kit`) |
 |---|---|---|
 | **Lenguaje** | PHP 8.4 | TypeScript / Vue 3 |
-| **Estilo / Linter** | Laravel Pint / PSR-12 | ESLint + Prettier |
+| **Estilo / Linter** | Laravel Pint (preset Laravel), Rector y PHPStan | ESLint (`@nuxt/eslint`) y `nuxt typecheck` |
 | **Archivos / Clases** | PascalCase (`UserController.php`) | PascalCase en componentes (`UserCard.vue`), camelCase en composables (`useAuth.ts`) |
 | **Métodos y funciones** | camelCase (`findActiveUsers()`) | camelCase (`fetchUserProfile()`) |
 | **Tablas y columnas DB** | snake_case plural (`users`, `created_at`) | — |

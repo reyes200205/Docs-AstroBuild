@@ -5,7 +5,7 @@ description: Reglas para cambiar el esquema de la base de datos en producción s
 
 ## Cómo se aplican
 
-Las migraciones corren en el paso 5 de [Actualizar producción](/deploy/operacion/actualizar/), con la
+Las migraciones corren en el paso 5 de [Actualizar producción](/deploy/operations/update-production/), con la
 imagen nueva y **antes** de recrear los contenedores:
 
 ```bash
@@ -25,7 +25,7 @@ sudo docker compose run --rm api php artisan migrate:status
    `migrate` responde `Nothing to migrate`.
 2. **Migraciones idempotentes** cuando sea posible (`Schema::hasColumn`, `Schema::hasTable`): si
    algo se aplicó a mano o a medias, volver a correrla no rompe.
-3. **Compatibles hacia atrás.** El [rollback](/deploy/operacion/rollback/) revierte el código, no
+3. **Compatibles hacia atrás.** El [rollback](/deploy/operations/rollback/) revierte el código, no
    la base. La versión anterior del código tiene que poder funcionar con el esquema nuevo:
    - Agregar columnas nullable o con default: seguro.
    - Quitar o renombrar: en **dos despliegues**. Primero el código deja de usar la columna y
@@ -47,7 +47,7 @@ Desde **Management → Tareas Programadas → Respaldo de la base de datos → E
 la ejecución salga *Correcta* en el historial antes de seguir.
 
 Si la app no está disponible, el respaldo manual está en
-[Respaldos](/deploy/operacion/respaldos/#respaldo-manual-desde-la-terminal).
+[Respaldos](/deploy/operations/backups/#respaldo-manual-desde-la-terminal).
 
 ## Comprobar el esquema
 

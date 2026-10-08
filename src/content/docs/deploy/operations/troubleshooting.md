@@ -38,8 +38,8 @@ Si no coincide con el `.env`, falta recrear los contenedores.
 | `permission denied ... docker.sock` | Falta `sudo` (en una cadena con `&&`, cada comando lleva el suyo) | Repite con `sudo`. Si era el `up -d`, no se aplicó nada |
 | La app sigue como la versión anterior | Se hizo `pull` pero el `up -d` no corrió o falló | `sudo docker compose up -d` y revisa la fecha de la imagen |
 | Un cambio en el `.env` no tiene efecto | Se usó `restart` en lugar de recrear | `sudo docker compose up -d --force-recreate api queue scheduler` |
-| `Unknown column ...` después de desplegar | Se editó una migración que ya había corrido, o se saltó el paso de migraciones | Migración nueva y paso 5 ([Migraciones](/deploy/operacion/migraciones/)) |
-| `unauthorized` al hacer `pull` | Venció el token de GHCR | Token nuevo con `read:packages` y `docker login ghcr.io` ([Instalación](/deploy/instalacion/#4-el-proyecto)) |
+| `Unknown column ...` después de desplegar | Se editó una migración que ya había corrido, o se saltó el paso de migraciones | Migración nueva y paso 5 ([Migraciones](/deploy/operations/migrations/)) |
+| `unauthorized` al hacer `pull` | Venció el token de GHCR | Token nuevo con `read:packages` y `docker login ghcr.io` ([Instalación](/deploy/installation/#4-el-proyecto)) |
 | `manifest unknown` al hacer `pull` | El build no terminó o falló | Revisa *Actions* en GitHub |
 | `git pull` avisa de cambios locales | Alguien editó un archivo del clon | `git status` y `git checkout -- <archivo>`. **No toques** `.env`, `certs/` ni `secrets/` |
 | 502 / 504 | `api` o `web` no arrancaron | `ps` y `logs api` |
@@ -52,4 +52,4 @@ Si no coincide con el `.env`, falta recrear los contenedores.
 | Se ve el frontend viejo | Caché del navegador o de Cloudflare | `Ctrl+F5`; si sigue, *Caching → Purge Everything* |
 | Disco lleno | Imágenes viejas | `sudo docker image prune -f` |
 | Jobs que no se procesan | Worker `queue` caído | `logs queue`, `restart queue` |
-| Tareas programadas que no corren | [Tareas programadas → Problemas](/deploy/operacion/tareas-programadas/#problemas) | |
+| Tareas programadas que no corren | [Tareas programadas → Problemas](/deploy/operations/scheduled-tasks/#problemas) | |

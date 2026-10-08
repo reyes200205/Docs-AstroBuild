@@ -71,19 +71,41 @@ de verdad protege el 443 es el **Security Group de AWS**, y por eso ningún cont
 
 ## fail2ban
 
-`/etc/fail2ban/jail.d/sshd.local`: jail `sshd` con `backend=systemd`, 5 intentos en 10 minutos →
-bloqueo de 1 hora. Con login solo por llave la fuerza bruta no es viable; fail2ban reduce el
-ruido en los logs y la carga de los escaneos.
+`/etc/fail2ban/jail.d/sshd.local`: 5 intentos en 10 minutos → bloqueo de 1 hora.
+
+```ini
+[sshd]
+enabled  = true
+backend  = systemd
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+```
+
+Con login solo por llave la fuerza bruta no es viable; fail2ban reduce el ruido en los logs y la
+carga de los escaneos. Estado y IPs bloqueadas: `sudo fail2ban-client status sshd`.
 
 ## Parches automáticos
 
-`unattended-upgrades` con `/etc/apt/apt.conf.d/52unattended-upgrades-local`:
+`unattended-upgrades` (activo de fábrica en la imagen de Ubuntu) con
+`/etc/apt/apt.conf.d/52unattended-upgrades-local`, que se carga después de
+`50unattended-upgrades` y por eso tiene prioridad:
+
+```text
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "09:00";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+```
 
 - Instala los parches de seguridad de Ubuntu.
 - Reinicia **solo si un parche lo requiere**, a las **09:00 UTC (03:00 Monterrey)**.
 - Limpia kernels y dependencias sin uso.
 - **Docker no se actualiza solo**: su repositorio no está entre los orígenes permitidos, para que
   el daemon nunca se reinicie sin que lo decidas.
+
+Comprobar: `sudo unattended-upgrade --dry-run` (sin errores) y
+`apt-config dump | grep Automatic-Reboot`.
 
 ## Swap
 

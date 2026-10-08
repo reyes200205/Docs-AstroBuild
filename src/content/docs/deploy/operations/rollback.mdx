@@ -11,8 +11,8 @@ SHA de una versión buena.
 
 :::caution[El rollback no toca la base de datos]
 Revierte el código, no el esquema. Si la versión mala aplicó una migración, el código anterior
-tiene que tolerarla ([por eso las migraciones son compatibles hacia atrás](/deploy/operacion/migraciones/#reglas)).
-Si no la tolera, restaura un [respaldo](/deploy/operacion/respaldos/#restaurar) o corrige con una
+tiene que tolerarla ([por eso las migraciones son compatibles hacia atrás](/deploy/operations/migrations/#reglas)).
+Si no la tolera, restaura un [respaldo](/deploy/operations/backups/#restaurar) o corrige con una
 migración nueva.
 :::
 
@@ -44,7 +44,7 @@ migración nueva.
    sudo docker compose up -d
    ```
 
-4. **Verifica** como en [Actualizar producción](/deploy/operacion/actualizar/#verificar).
+4. **Verifica** como en [Actualizar producción](/deploy/operations/update-production/#verificar).
 
 </Steps>
 
@@ -55,7 +55,7 @@ Con la corrección ya subida a `main` y su build en verde:
 <Steps>
 
 1. **Quita** la línea `IMAGE_TAG` del `.env`.
-2. Haz una [actualización normal](/deploy/operacion/actualizar/) (pasos 3–7).
+2. Haz una [actualización normal](/deploy/operations/update-production/) (pasos 3–7).
 
 </Steps>
 
